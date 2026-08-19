@@ -1,14 +1,33 @@
-import { StyleSheet, Text, View } from 'react-native'
-import React from 'react'
+import React from 'react';
+
+import { View, Text, StyleSheet } from 'react-native';
+
+import { theme } from '../../constant';
 
 const OrdersScreen = () => {
   return (
-    <View>
-      <Text>OrdersScreen</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Orders</Text>
     </View>
-  )
-}
+  );
+};
 
-export default OrdersScreen
+export default OrdersScreen;
 
-const styles = StyleSheet.create({})
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+
+    padding: theme.spacing.xxl,
+
+    backgroundColor: theme.colors.background,
+  },
+
+  title: {
+    color: theme.colors.textPrimary,
+
+    fontSize: theme.typography.fontSize.heading,
+
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+});

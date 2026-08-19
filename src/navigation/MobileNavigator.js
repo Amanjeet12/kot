@@ -1,56 +1,101 @@
 import React from 'react';
 
+import { View, StyleSheet } from 'react-native';
+
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-import HomeScreen from '../screens/home/HomeScreen';
 import OrdersScreen from '../screens/orders/OrdersScreen';
-import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import HistoryScreen from '../screens/history/HistoryScreen';
+import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+
+import { theme } from '../constant';
 
 const Tab = createBottomTabNavigator();
 
 const MobileNavigator = () => {
+  const insets = useSafeAreaInsets();
+
+  /*
+   * Normal visible tab height
+   * excluding device safe-area.
+   */
+  const TAB_BAR_HEIGHT = 60;
+
   return (
     <Tab.Navigator
-      initialRouteName="Home"
+      initialRouteName="Orders"
       screenOptions={({ route }) => ({
         headerShown: false,
 
         tabBarHideOnKeyboard: true,
 
-        tabBarActiveTintColor: '#710708',
+        tabBarActiveTintColor: theme.colors.textPrimary,
 
-        tabBarInactiveTintColor: '#8A8A8A',
+        tabBarInactiveTintColor: theme.colors.textMuted,
+
+        /*
+        |--------------------------------------------------------------------------
+        | SAFE AREA TAB BAR
+        |--------------------------------------------------------------------------
+        */
 
         tabBarStyle: {
-          height: 65,
-          paddingTop: 5,
-          paddingBottom: 8,
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#EEEEEE',
+          height: TAB_BAR_HEIGHT + insets.bottom,
+
+          paddingTop: 6,
+
+          /*
+           * Android gesture area
+           * will automatically be added.
+           */
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+
+          backgroundColor: theme.colors.surface,
+
+          borderTopWidth: 1,
+
+          borderTopColor: theme.colors.border,
+
+          elevation: 8,
+        },
+
+        tabBarItemStyle: {
+          paddingTop: 2,
         },
 
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          fontSize: theme.typography.fontSize.xs,
+
+          fontWeight: theme.typography.fontWeight.semiBold,
+
+          marginTop: 2,
         },
 
-        tabBarIcon: ({ color, size, focused }) => {
+        /*
+        |--------------------------------------------------------------------------
+        | TAB ICONS
+        |--------------------------------------------------------------------------
+        */
+
+        tabBarIcon: ({ focused }) => {
           let iconName;
 
           switch (route.name) {
-            case 'Home':
-              iconName = focused ? 'home' : 'home-outline';
-              break;
-
             case 'Orders':
-              iconName = focused ? 'receipt' : 'receipt-outline';
+              iconName = focused ? 'calendar' : 'calendar-outline';
               break;
 
-            case 'Notifications':
-              iconName = focused ? 'notifications' : 'notifications-outline';
+            case 'History':
+              iconName = focused ? 'time' : 'time-outline';
+              break;
+
+            case 'Menu':
+              iconName = focused ? 'grid' : 'grid-outline';
               break;
 
             case 'Profile':
@@ -61,15 +106,31 @@ const MobileNavigator = () => {
               iconName = 'ellipse-outline';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <View
+              style={[
+                styles.iconContainer,
+
+                focused && styles.iconContainerActive,
+              ]}
+            >
+              <Ionicons
+                name={iconName}
+                size={22}
+                color={
+                  focused ? theme.colors.textPrimary : theme.colors.textMuted
+                }
+              />
+            </View>
+          );
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-
       <Tab.Screen name="Orders" component={OrdersScreen} />
 
-      <Tab.Screen name="Notifications" component={NotificationsScreen} />
+      <Tab.Screen name="History" component={HistoryScreen} />
+
+      <Tab.Screen name="Menu" component={MenuScreen} />
 
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -77,3 +138,21 @@ const MobileNavigator = () => {
 };
 
 export default MobileNavigator;
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    width: 38,
+
+    height: 32,
+
+    justifyContent: 'center',
+
+    alignItems: 'center',
+
+    borderRadius: theme.radius.lg,
+  },
+
+  iconContainerActive: {
+    backgroundColor: theme.colors.primary,
+  },
+});

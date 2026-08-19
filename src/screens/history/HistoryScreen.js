@@ -4,15 +4,15 @@ import { View, Text, StyleSheet } from 'react-native';
 
 import { theme } from '../../constant';
 
-const ProfileScreen = () => {
+const HistoryScreen = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Profile </Text>
+      <Text style={styles.title}>History</Text>
     </View>
   );
 };
 
-export default ProfileScreen;
+export default HistoryScreen;
 
 const styles = StyleSheet.create({
   container: {

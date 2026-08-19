@@ -1,28 +1,33 @@
 import React from 'react';
+
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
+import { useSelector } from 'react-redux';
+
 import { useResponsive } from '../../contexts/ResponsiveContext';
+
+import { theme } from '../../constant';
 
 const menuItems = [
   {
-    label: 'Home',
-    route: 'Home',
-    icon: 'home-outline',
-    activeIcon: 'home',
-  },
-  {
     label: 'Orders',
     route: 'Orders',
-    icon: 'receipt-outline',
-    activeIcon: 'receipt',
+    icon: 'calendar-outline',
+    activeIcon: 'calendar',
   },
   {
-    label: 'Notifications',
-    route: 'Notifications',
-    icon: 'notifications-outline',
-    activeIcon: 'notifications',
+    label: 'History',
+    route: 'History',
+    icon: 'time-outline',
+    activeIcon: 'time',
+  },
+  {
+    label: 'Menu',
+    route: 'Menu',
+    icon: 'grid-outline',
+    activeIcon: 'grid',
   },
   {
     label: 'Profile',
@@ -32,8 +37,12 @@ const menuItems = [
   },
 ];
 
-const TabletSidebar = ({ navigation, state }) => {
+const TabletSidebar = ({ navigation, state, collapsed, onToggleCollapse }) => {
   const { isLargeTablet } = useResponsive();
+
+  const user = useSelector(reduxState => reduxState.auth.user);
+
+  const locationName = user?.location?.locationName || 'Location';
 
   const currentRoute = state.routes[state.index]?.name;
 
@@ -43,25 +52,64 @@ const TabletSidebar = ({ navigation, state }) => {
 
   return (
     <View style={styles.container}>
-      {/* Logo */}
-      <View style={styles.logoContainer}>
-        <View style={styles.logoBox}>
-          <Text style={styles.logoLetter}>M</Text>
+      {/* ===================================================== */}
+      {/* BRAND */}
+      {/* ===================================================== */}
+
+      <View
+        style={[
+          styles.logoContainer,
+
+          collapsed && styles.logoContainerCollapsed,
+        ]}
+      >
+        <View
+          style={[
+            styles.logoBox,
+
+            isLargeTablet && styles.logoBoxLarge,
+
+            collapsed && styles.logoBoxCollapsed,
+          ]}
+        >
+          <Text
+            style={[styles.logoLetter, isLargeTablet && styles.logoLetterLarge]}
+          >
+            M
+          </Text>
         </View>
 
-        <View>
-          <Text style={styles.logoTitle}>My App</Text>
+        {!collapsed && (
+          <View style={styles.logoTextContainer}>
+            <Text
+              style={[styles.logoTitle, isLargeTablet && styles.logoTitleLarge]}
+              numberOfLines={1}
+            >
+              My App
+            </Text>
 
-          <Text style={styles.logoSubtitle}>Management</Text>
-        </View>
+            <Text
+              style={[
+                styles.logoSubtitle,
+
+                isLargeTablet && styles.logoSubtitleLarge,
+              ]}
+              numberOfLines={1}
+            >
+              Management
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Navigation */}
+      {/* ===================================================== */}
+      {/* MENU */}
+      {/* ===================================================== */}
+
       <View style={styles.menuContainer}>
-        <Text style={styles.sectionTitle}>MENU</Text>
+        {!collapsed && <Text style={styles.sectionTitle}>MENU</Text>}
 
         {menuItems.map(item => {
           const isActive = currentRoute === item.route;
@@ -69,54 +117,138 @@ const TabletSidebar = ({ navigation, state }) => {
           return (
             <TouchableOpacity
               key={item.route}
-              activeOpacity={0.7}
-              style={[styles.menuItem, isActive && styles.menuItemActive]}
+              activeOpacity={0.75}
               onPress={() => handleNavigation(item.route)}
+              style={[
+                styles.menuItem,
+
+                isLargeTablet && styles.menuItemLarge,
+
+                collapsed && styles.menuItemCollapsed,
+
+                isActive && styles.menuItemActive,
+              ]}
             >
               <View
                 style={[
                   styles.iconContainer,
+
+                  isLargeTablet && styles.iconContainerLarge,
+
+                  collapsed && styles.iconContainerCollapsed,
+
                   isActive && styles.iconContainerActive,
                 ]}
               >
                 <Ionicons
                   name={isActive ? item.activeIcon : item.icon}
-                  size={isLargeTablet ? 22 : 20}
-                  color={isActive ? '#710708' : '#6B7280'}
+                  size={isLargeTablet ? 23 : 21}
+                  color={
+                    isActive
+                      ? theme.colors.textPrimary
+                      : theme.colors.textSecondary
+                  }
                 />
               </View>
 
-              <Text
-                style={[styles.menuLabel, isActive && styles.menuLabelActive]}
-              >
-                {item.label}
-              </Text>
+              {!collapsed && (
+                <>
+                  <Text
+                    style={[
+                      styles.menuLabel,
 
-              {isActive && <View style={styles.activeIndicator} />}
+                      isLargeTablet && styles.menuLabelLarge,
+
+                      isActive && styles.menuLabelActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.label}
+                  </Text>
+
+                  {isActive && <View style={styles.activeIndicator} />}
+                </>
+              )}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Bottom */}
+      {/* ===================================================== */}
+      {/* BOTTOM */}
+      {/* ===================================================== */}
+
       <View style={styles.bottomContainer}>
         <View style={styles.divider} />
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.logoutButton}
-          onPress={() => {
-            console.log('Logout');
-          }}
-        >
-          <View style={styles.logoutIconContainer}>
-            <Ionicons name="log-out-outline" size={21} color="#DC2626" />
-          </View>
+        {/* LOCATION CARD */}
 
-          <Text style={styles.logoutText}>Logout</Text>
+        {!collapsed ? (
+          <View
+            style={[
+              styles.locationCard,
+
+              isLargeTablet && styles.locationCardLarge,
+            ]}
+          >
+            <View style={styles.locationTopRow}>
+              <View style={styles.onlineDotContainer}>
+                <View style={styles.onlineDot} />
+              </View>
+
+              <Text
+                style={[
+                  styles.locationName,
+
+                  isLargeTablet && styles.locationNameLarge,
+                ]}
+                numberOfLines={1}
+              >
+                {locationName}
+              </Text>
+            </View>
+
+            <Text
+              style={[
+                styles.tabletStatus,
+
+                isLargeTablet && styles.tabletStatusLarge,
+              ]}
+            >
+              Tablet online
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.collapsedLocationCard}>
+            <View style={styles.onlineDotContainer}>
+              <View style={styles.onlineDot} />
+            </View>
+          </View>
+        )}
+
+        {/* COLLAPSE BUTTON */}
+
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={onToggleCollapse}
+          style={[
+            styles.collapseButton,
+
+            collapsed && styles.collapseButtonCollapsed,
+          ]}
+        >
+          <Ionicons
+            name={
+              collapsed ? 'chevron-forward-outline' : 'chevron-back-outline'
+            }
+            size={20}
+            color={theme.colors.textSecondary}
+          />
+
+          {!collapsed && <Text style={styles.collapseText}>Collapse menu</Text>}
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Version 1.0.0</Text>
+        {!collapsed && <Text style={styles.versionText}>Version 1.0.0</Text>}
       </View>
     </View>
   );
@@ -127,156 +259,379 @@ export default TabletSidebar;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingTop: 20,
-    paddingBottom: 18,
+
+    backgroundColor: theme.colors.surface,
+
+    paddingHorizontal: theme.spacing.md,
+
+    paddingTop: theme.spacing.xxl,
+
+    paddingBottom: theme.spacing.xl,
 
     borderRightWidth: 1,
-    borderRightColor: '#ECECEC',
+
+    borderRightColor: theme.colors.border,
   },
+
+  /* BRAND */
 
   logoContainer: {
     flexDirection: 'row',
+
     alignItems: 'center',
-    paddingHorizontal: 10,
-    marginBottom: 20,
+
+    paddingHorizontal: theme.spacing.sm,
+
+    marginBottom: theme.spacing.xxl,
+  },
+
+  logoContainerCollapsed: {
+    justifyContent: 'center',
+
+    paddingHorizontal: 0,
   },
 
   logoBox: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: '#710708',
+
+    borderRadius: theme.radius.xl,
+
+    backgroundColor: theme.colors.primary,
 
     justifyContent: 'center',
+
     alignItems: 'center',
 
-    marginRight: 12,
+    marginRight: theme.spacing.md,
+  },
+
+  logoBoxCollapsed: {
+    marginRight: 0,
+  },
+
+  logoBoxLarge: {
+    width: 50,
+    height: 50,
   },
 
   logoLetter: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
+    color: theme.colors.textOnPrimary,
+
+    fontSize: theme.typography.fontSize.xl,
+
+    fontWeight: theme.typography.fontWeight.extraBold,
+  },
+
+  logoLetterLarge: {
+    fontSize: theme.typography.fontSize.xxl,
+  },
+
+  logoTextContainer: {
+    flex: 1,
   },
 
   logoTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    color: theme.colors.textPrimary,
+
+    fontSize: theme.typography.fontSize.lg,
+
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+
+  logoTitleLarge: {
+    fontSize: theme.typography.fontSize.xl,
   },
 
   logoSubtitle: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
+    color: theme.colors.textMuted,
+
+    fontSize: theme.typography.fontSize.xs,
+
+    marginTop: theme.spacing.xs,
   },
+
+  logoSubtitleLarge: {
+    fontSize: theme.typography.fontSize.sm,
+  },
+
+  /* DIVIDER */
 
   divider: {
     height: 1,
-    backgroundColor: '#EEEEEE',
-    marginBottom: 18,
+
+    backgroundColor: theme.colors.border,
+
+    marginBottom: theme.spacing.lg,
   },
+
+  /* MENU */
 
   menuContainer: {
     flex: 1,
   },
 
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    color: theme.colors.textMuted,
+
+    fontSize: theme.typography.fontSize.xs,
+
+    fontWeight: theme.typography.fontWeight.semiBold,
+
+    paddingHorizontal: theme.spacing.md,
+
+    marginBottom: theme.spacing.sm,
+
     letterSpacing: 1,
   },
 
   menuItem: {
     position: 'relative',
 
-    height: 54,
+    height: 52,
+
     flexDirection: 'row',
+
     alignItems: 'center',
 
-    borderRadius: 12,
+    paddingHorizontal: theme.spacing.sm,
 
-    paddingHorizontal: 10,
-    marginBottom: 6,
+    marginBottom: theme.spacing.xs,
+
+    borderRadius: theme.radius.xl,
+  },
+
+  menuItemLarge: {
+    height: 58,
+
+    paddingHorizontal: theme.spacing.md,
+  },
+
+  menuItemCollapsed: {
+    justifyContent: 'center',
+
+    paddingHorizontal: 0,
   },
 
   menuItemActive: {
-    backgroundColor: '#F9EEEE',
+    backgroundColor: theme.colors.primaryLight,
   },
+
+  /* ICON */
 
   iconContainer: {
     width: 36,
     height: 36,
 
-    borderRadius: 9,
+    borderRadius: theme.radius.lg,
 
     justifyContent: 'center',
+
     alignItems: 'center',
 
-    marginRight: 10,
+    marginRight: theme.spacing.sm,
+  },
+
+  iconContainerLarge: {
+    width: 40,
+    height: 40,
+  },
+
+  iconContainerCollapsed: {
+    marginRight: 0,
   },
 
   iconContainerActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.primary,
   },
+
+  /* MENU LABEL */
 
   menuLabel: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#6B7280',
+
+    color: theme.colors.textSecondary,
+
+    fontSize: theme.typography.fontSize.base,
+
+    fontWeight: theme.typography.fontWeight.medium,
+  },
+
+  menuLabelLarge: {
+    fontSize: theme.typography.fontSize.md,
   },
 
   menuLabelActive: {
-    color: '#710708',
-    fontWeight: '700',
+    color: theme.colors.textPrimary,
+
+    fontWeight: theme.typography.fontWeight.bold,
   },
 
   activeIndicator: {
     width: 4,
-    height: 25,
-    borderRadius: 4,
-    backgroundColor: '#710708',
+
+    height: 26,
+
+    borderRadius: theme.radius.round,
+
+    backgroundColor: theme.colors.primary,
   },
+
+  /* BOTTOM */
 
   bottomContainer: {
     marginTop: 'auto',
   },
 
-  logoutButton: {
-    height: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
+  /* LOCATION */
 
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-
-  logoutIconContainer: {
-    width: 36,
-    height: 36,
+  locationCard: {
+    minHeight: 60,
 
     justifyContent: 'center',
+
+    borderWidth: 1,
+
+    borderColor: theme.colors.borderDark,
+
+    borderRadius: theme.radius.xxl,
+
+    paddingHorizontal: theme.spacing.lg,
+
+    paddingVertical: theme.spacing.sm,
+
+    marginHorizontal: theme.spacing.xs,
+
+    marginBottom: theme.spacing.md,
+  },
+
+  locationCardLarge: {
+    minHeight: 66,
+
+    paddingHorizontal: theme.spacing.xl,
+  },
+
+  locationTopRow: {
+    flexDirection: 'row',
+
     alignItems: 'center',
 
-    marginRight: 10,
+    justifyContent: 'center',
   },
 
-  logoutText: {
-    color: '#DC2626',
-    fontSize: 15,
-    fontWeight: '600',
+  collapsedLocationCard: {
+    height: 48,
+
+    justifyContent: 'center',
+
+    alignItems: 'center',
+
+    borderWidth: 1,
+
+    borderColor: theme.colors.borderDark,
+
+    borderRadius: theme.radius.xl,
+
+    marginBottom: theme.spacing.md,
   },
+
+  onlineDotContainer: {
+    width: 18,
+
+    height: 18,
+
+    justifyContent: 'center',
+
+    alignItems: 'center',
+
+    marginRight: theme.spacing.xs,
+
+    borderRadius: theme.radius.round,
+
+    backgroundColor: '#D1FAE5',
+  },
+
+  onlineDot: {
+    width: 10,
+
+    height: 10,
+
+    borderRadius: theme.radius.round,
+
+    backgroundColor: theme.colors.success,
+  },
+
+  locationName: {
+    flexShrink: 1,
+
+    color: theme.colors.textPrimary,
+
+    fontSize: theme.typography.fontSize.sm,
+
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+
+  locationNameLarge: {
+    fontSize: theme.typography.fontSize.base,
+  },
+
+  tabletStatus: {
+    color: theme.colors.textSecondary,
+
+    fontSize: theme.typography.fontSize.xs,
+
+    textAlign: 'center',
+
+    marginTop: theme.spacing.xs,
+  },
+
+  tabletStatusLarge: {
+    fontSize: theme.typography.fontSize.sm,
+  },
+
+  /* COLLAPSE */
+
+  collapseButton: {
+    height: 50,
+
+    flexDirection: 'row',
+
+    justifyContent: 'center',
+
+    alignItems: 'center',
+
+    borderRadius: theme.radius.xl,
+
+    backgroundColor: theme.colors.surfaceSecondary,
+
+    marginHorizontal: theme.spacing.xs,
+  },
+
+  collapseButtonCollapsed: {
+    width: 48,
+
+    alignSelf: 'center',
+  },
+
+  collapseText: {
+    color: theme.colors.textSecondary,
+
+    fontSize: theme.typography.fontSize.base,
+
+    fontWeight: theme.typography.fontWeight.semiBold,
+
+    marginLeft: theme.spacing.sm,
+  },
+
+  /* VERSION */
 
   versionText: {
-    fontSize: 10,
-    color: '#B0B0B0',
+    color: theme.colors.textMuted,
+
+    fontSize: theme.typography.fontSize.xs,
+
     textAlign: 'center',
-    marginTop: 12,
+
+    marginTop: theme.spacing.md,
   },
 });

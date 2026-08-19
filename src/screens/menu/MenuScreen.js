@@ -4,15 +4,15 @@ import { View, Text, StyleSheet } from 'react-native';
 
 import { theme } from '../../constant';
 
-const ProfileScreen = () => {
+const MenuScreen = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Profile </Text>
+      <Text style={styles.title}>Menu</Text>
     </View>
   );
 };
 
-export default ProfileScreen;
+export default MenuScreen;
 
 const styles = StyleSheet.create({
   container: {

@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 let socket = null;
 
 export const initializeSocket = token => {
-  const socketUrl = Config.SOCKET_URL || Config.API_URL;
+  const socketUrl = Config.SOCKET_URL;
 
   if (!socketUrl) {
     throw new Error(

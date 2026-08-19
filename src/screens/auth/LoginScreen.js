@@ -11,78 +11,52 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-
 import { theme } from '../../constant/index';
-
 import { useResponsive } from '../../contexts/ResponsiveContext';
-
-// Later uncomment:
-// import {sendOtp} from '../../api/services/auth.service';
+import { useDispatch, useSelector } from 'react-redux';
+import { sendPhoneOtp, clearAuthError } from '../../store/slices/authSlice';
 
 const LoginScreen = ({ navigation }) => {
   const { isTablet } = useResponsive();
-
   const [phone, setPhone] = useState('');
-
-  const [loading, setLoading] = useState(false);
-
-  const [error, setError] = useState('');
+  const dispatch = useDispatch();
+  const { sendOtpLoading, error } = useSelector(state => state.auth);
 
   const handlePhoneChange = value => {
     const cleanedValue = value.replace(/[^0-9]/g, '');
 
     setPhone(cleanedValue);
-    setError('');
   };
 
   const handleSendOtp = async () => {
     if (!phone) {
-      setError('Mobile number is required');
-
       return;
     }
 
     if (phone.length !== 10) {
-      setError('Enter a valid 10 digit mobile number');
-
       return;
     }
 
+    const num = '+91' + phone;
+
     try {
-      setLoading(true);
-      setError('');
+      const result = await dispatch(
+        sendPhoneOtp({
+          phone: num,
+        }),
+      ).unwrap();
 
-      /*
-      const response =
-        await sendOtp(phone);
-
-      if (!response?.success) {
-        throw new Error(
-          response?.msg ||
-            'Unable to send OTP',
-        );
-      }
-      */
-
-      console.log('Sending OTP:', phone);
+      console.log('Send OTP success:', result);
 
       navigation.navigate('Otp', {
-        phone,
+        phone: num,
       });
-    } catch (err) {
-      console.log('Send OTP error:', err);
-
-      setError(
-        err?.response?.data?.msg ||
-          err?.message ||
-          'Unable to send OTP. Please try again.',
-      );
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.log('Send OTP failed:', error);
     }
   };
 
-  const isDisabled = phone.length !== 10 || loading;
+  const isDisabled = phone.length !== 10 || sendOtpLoading;
 
   return (
     <KeyboardAvoidingView
@@ -166,7 +140,7 @@ const LoginScreen = ({ navigation }) => {
                 onPress={handleSendOtp}
                 style={[styles.button, isDisabled && styles.buttonDisabled]}
               >
-                {loading ? (
+                {sendOtpLoading ? (
                   <ActivityIndicator
                     size="small"
                     color={theme.colors.textPrimary}
