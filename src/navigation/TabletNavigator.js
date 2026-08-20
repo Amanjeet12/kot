@@ -8,6 +8,7 @@ import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 
 import TabletSidebar from '../components/navigation/TabletSidebar';
+import OrdersStackNavigator from './OrdersStackNavigator';
 
 import { useResponsive } from '../contexts/ResponsiveContext';
 
@@ -54,7 +55,7 @@ const TabletNavigator = () => {
         },
       }}
     >
-      <Drawer.Screen name="Orders" component={OrdersScreen} />
+      <Drawer.Screen name="Orders" component={OrdersStackNavigator} />
 
       <Drawer.Screen name="History" component={HistoryScreen} />
 
