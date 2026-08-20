@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 
 import { createDrawerNavigator } from '@react-navigation/drawer';
 
-import OrdersScreen from '../screens/orders/OrdersScreen';
-import HistoryScreen from '../screens/history/HistoryScreen';
+import HistoryScreen from '../screens/history/OrderHistoryScreen';
 import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 

@@ -8,8 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-import OrdersScreen from '../screens/orders/OrdersScreen';
-import HistoryScreen from '../screens/history/HistoryScreen';
+import HistoryScreen from '../screens/history/OrderHistoryScreen';
 import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import OrdersStackNavigator from './OrdersStackNavigator';
