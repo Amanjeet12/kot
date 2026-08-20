@@ -10,15 +10,11 @@ import { useResponsive } from '../../../contexts/ResponsiveContext';
 
 const MAX_PREVIEW_ITEMS = 3;
 
-const formatDuration = seconds => {
-  const minutes = Math.floor((seconds || 0) / 60);
-
-  const remainingSeconds = (seconds || 0) % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(
-    remainingSeconds,
-  ).padStart(2, '0')}`;
-};
+/*
+|--------------------------------------------------------------------------
+| ORDER ITEM
+|--------------------------------------------------------------------------
+*/
 
 const OrderItem = ({ item }) => {
   return (
@@ -56,16 +52,34 @@ const OrderItem = ({ item }) => {
   );
 };
 
-const OrderCard = ({
-  order,
-  isNext,
-  onStartPreparation,
-  onCancel,
-  onViewDetails,
-}) => {
+/*
+|--------------------------------------------------------------------------
+| ORDER CARD
+|--------------------------------------------------------------------------
+*/
+
+const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
   const { isTablet, isLargeTablet } = useResponsive();
 
-  const isPreparing = order.status === 'preparing';
+  /*
+  |--------------------------------------------------------------------------
+  | STATUS
+  |--------------------------------------------------------------------------
+  */
+
+  const status = order?.status?.toLowerCase()?.trim();
+
+  const isConfirmed = status === 'confirmed';
+
+  const isPreparing = status === 'preparing';
+
+  const isReady = status === 'ready';
+
+  /*
+  |--------------------------------------------------------------------------
+  | ITEMS
+  |--------------------------------------------------------------------------
+  */
 
   const items = order?.items || [];
 
@@ -74,10 +88,80 @@ const OrderCard = ({
   const remainingItems = Math.max(items.length - MAX_PREVIEW_ITEMS, 0);
 
   /*
-   * Keep every card same height.
-   * Bottom buttons remain visible.
-   */
+  |--------------------------------------------------------------------------
+  | SAME CARD HEIGHT FOR ALL STATUS
+  |--------------------------------------------------------------------------
+  */
+
   const cardHeight = isLargeTablet ? 420 : isTablet ? 415 : 435;
+
+  /*
+  |--------------------------------------------------------------------------
+  | STATUS CONFIG
+  |--------------------------------------------------------------------------
+  */
+
+  const statusConfig = (() => {
+    switch (status) {
+      case 'pending':
+        return {
+          label: 'Pending',
+          background: '#F3F4F6',
+          color: theme.colors.textSecondary,
+        };
+
+      case 'confirmed':
+        return {
+          label: 'Confirmed',
+          background: theme.colors.primaryLight,
+          color: '#8A6A00',
+        };
+
+      case 'preparing':
+        return {
+          label: 'Preparing',
+          background: '#E8EFFC',
+          color: theme.colors.info,
+        };
+
+      case 'ready':
+        return {
+          label: 'Ready',
+          background: '#E7F7F0',
+          color: theme.colors.success,
+        };
+
+      case 'delivered':
+        return {
+          label: 'Delivered',
+          background: '#E7F7F0',
+          color: theme.colors.success,
+        };
+
+      case 'cancelled':
+        return {
+          label: 'Cancelled',
+          background: '#FDEAEA',
+          color: theme.colors.error,
+        };
+
+      case 'failed':
+        return {
+          label: 'Failed',
+          background: '#FDEAEA',
+          color: theme.colors.error,
+        };
+
+      default:
+        return {
+          label: status || 'Unknown',
+
+          background: theme.colors.surfaceSecondary,
+
+          color: theme.colors.textSecondary,
+        };
+    }
+  })();
 
   return (
     <View
@@ -93,53 +177,73 @@ const OrderCard = ({
       {/* ================================================= */}
 
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.rankBadge}>
-            <Text allowFontScaling={false} style={styles.rankText}>
-              #{order.rank}
-              {isNext ? ' NEXT' : ''}
-            </Text>
+        {/* TOP ROW */}
+        {/* This row always has same height */}
+
+        <View style={styles.headerTopRow}>
+          {/* RANK */}
+
+          <View style={styles.rankArea}>
+            {isConfirmed && order?.rank && (
+              <View style={styles.rankBadge}>
+                <Text allowFontScaling={false} style={styles.rankText}>
+                  #{order.rank}
+                  {isNext ? ' NEXT' : ''}
+                </Text>
+              </View>
+            )}
           </View>
 
-          <Text allowFontScaling={false} style={styles.orderTitle}>
-            KOT #{order.id}
-          </Text>
-
-          <Text
-            allowFontScaling={false}
-            numberOfLines={1}
-            style={styles.orderMeta}
-          >
-            Order #{order.orderNumber}
-            {' · '}
-            {order.orderTime}
-          </Text>
-        </View>
-
-        {/* TIMER + STATUS */}
-
-        <View style={styles.timerContainer}>
-          {/* STATUS MOVED HERE */}
+          {/* STATUS */}
 
           <View
             style={[
-              styles.topStatusBadge,
-
-              isPreparing && styles.preparingBadge,
+              styles.statusBadge,
+              {
+                backgroundColor: statusConfig.background,
+              },
             ]}
           >
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: statusConfig.color,
+                },
+              ]}
+            />
+
             <Text
               allowFontScaling={false}
               style={[
-                styles.topStatusText,
-
-                isPreparing && styles.preparingText,
+                styles.statusText,
+                {
+                  color: statusConfig.color,
+                },
               ]}
             >
-              {isPreparing ? 'Preparing' : 'Confirmed'}
+              {statusConfig.label}
             </Text>
           </View>
         </View>
+
+        {/* ORDER TITLE */}
+
+        <Text allowFontScaling={false} style={styles.orderTitle}>
+          KOT #{order.id}
+        </Text>
+
+        {/* ORDER META */}
+
+        <Text
+          allowFontScaling={false}
+          numberOfLines={1}
+          style={styles.orderMeta}
+        >
+          Order #{order.orderNumber}
+          {' · '}
+          {order.orderTime}
+        </Text>
       </View>
 
       <View style={styles.divider} />
@@ -164,7 +268,7 @@ const OrderCard = ({
       </View>
 
       {/* ================================================= */}
-      {/* ITEMS PREVIEW */}
+      {/* ITEM PREVIEW */}
       {/* ================================================= */}
 
       <View style={styles.itemsSection}>
@@ -196,7 +300,7 @@ const OrderCard = ({
       {/* ================================================= */}
 
       <View style={styles.bottomSection}>
-        {/* ITEM COUNT + VIEW DETAILS */}
+        {/* ITEM COUNT + DETAILS */}
 
         <View style={styles.detailsRow}>
           <Text allowFontScaling={false} style={styles.itemCount}>
@@ -220,44 +324,93 @@ const OrderCard = ({
           </TouchableOpacity>
         </View>
 
-        {/* ACTIONS */}
+        {/* ================================================= */}
+        {/* CONFIRMED */}
+        {/* ================================================= */}
 
-        <View style={styles.actions}>
-          {isPreparing ? (
-            <View style={styles.lockedButton}>
+        {isConfirmed && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.primaryButton}
+              onPress={() => onChangeStatus?.('preparing')}
+            >
+              <Text allowFontScaling={false} style={styles.primaryButtonText}>
+                Start preparation
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.cancelButton}
+              onPress={() => onChangeStatus?.('cancelled')}
+            >
+              <Text allowFontScaling={false} style={styles.cancelButtonText}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ================================================= */}
+        {/* PREPARING */}
+        {/* ================================================= */}
+
+        {isPreparing && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.primaryButton}
+              onPress={() => onChangeStatus?.('ready')}
+            >
+              <Ionicons
+                name="checkmark-outline"
+                size={15}
+                color={theme.colors.textPrimary}
+              />
+
               <Text
                 allowFontScaling={false}
-                numberOfLines={1}
-                style={styles.lockedText}
+                style={[styles.primaryButtonText, styles.buttonTextWithIcon]}
               >
-                Preparation in progress
-                {' · '}Actions locked
+                Mark as ready
               </Text>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.primaryButton}
-                onPress={onStartPreparation}
-              >
-                <Text allowFontScaling={false} style={styles.primaryButtonText}>
-                  Start preparation
-                </Text>
-              </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+        )}
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.cancelButton}
-                onPress={onCancel}
-              >
-                <Text allowFontScaling={false} style={styles.cancelButtonText}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
+        {/* ================================================= */}
+        {/* READY */}
+        {/* ================================================= */}
+
+        {isReady && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.deliveredButton}
+              onPress={() => onChangeStatus?.('delivered')}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={16}
+                color={theme.colors.textPrimary}
+              />
+
+              <Text allowFontScaling={false} style={styles.deliveredButtonText}>
+                Mark as delivered
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/*
+          No actions for:
+
+          pending
+          delivered
+          cancelled
+          failed
+        */}
       </View>
     </View>
   );
@@ -265,7 +418,19 @@ const OrderCard = ({
 
 export default OrderCard;
 
+/*
+|--------------------------------------------------------------------------
+| STYLES
+|--------------------------------------------------------------------------
+*/
+
 const styles = StyleSheet.create({
+  /*
+  |--------------------------------------------------------------------------
+  | CARD
+  |--------------------------------------------------------------------------
+  */
+
   card: {
     width: '100%',
 
@@ -280,14 +445,14 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card,
   },
 
-  /* HEADER */
+  /*
+  |--------------------------------------------------------------------------
+  | HEADER
+  |--------------------------------------------------------------------------
+  */
 
   header: {
-    minHeight: 86,
-
-    flexDirection: 'row',
-
-    justifyContent: 'space-between',
+    height: 78,
 
     paddingHorizontal: theme.spacing.md,
 
@@ -296,24 +461,59 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.sm,
   },
 
-  headerLeft: {
+  /*
+  |--------------------------------------------------------------------------
+  | FIXED TOP HEADER ROW
+  |--------------------------------------------------------------------------
+  |
+  | Confirmed:
+  |
+  | #1 NEXT                 Confirmed
+  |
+  | Ready:
+  |
+  |                         Ready
+  |
+  | Because this has a fixed height,
+  | KOT title always begins at the
+  | exact same vertical position.
+  |
+  */
+
+  headerTopRow: {
+    height: 25,
+
+    flexDirection: 'row',
+
+    alignItems: 'flex-start',
+
+    justifyContent: 'space-between',
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | RANK AREA
+  |--------------------------------------------------------------------------
+  */
+
+  rankArea: {
     flex: 1,
 
-    paddingRight: theme.spacing.sm,
+    height: 22,
+
+    justifyContent: 'flex-start',
+
+    alignItems: 'flex-start',
   },
 
   rankBadge: {
-    alignSelf: 'flex-start',
-
-    minHeight: 22,
+    minHeight: 20,
 
     justifyContent: 'center',
 
     paddingHorizontal: theme.spacing.sm,
 
-    marginBottom: 2,
-
-    borderRadius: theme.radius.sm,
+    borderRadius: 4,
 
     backgroundColor: theme.colors.black,
   },
@@ -326,41 +526,63 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /*
+  |--------------------------------------------------------------------------
+  | STATUS
+  |--------------------------------------------------------------------------
+  */
+
+  statusBadge: {
+    minHeight: 22,
+
+    flexDirection: 'row',
+
+    alignItems: 'center',
+
+    justifyContent: 'center',
+
+    paddingHorizontal: 8,
+
+    paddingVertical: 3,
+
+    borderRadius: 6,
+  },
+
+  statusDot: {
+    width: 5,
+
+    height: 5,
+
+    marginRight: 5,
+
+    borderRadius: 3,
+  },
+
+  statusText: {
+    fontSize: 8,
+
+    lineHeight: 11,
+
+    fontWeight: '700',
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | ORDER TITLE
+  |--------------------------------------------------------------------------
+  */
+
   orderTitle: {
     color: theme.colors.textPrimary,
 
     fontSize: 19,
 
-    lineHeight: 22,
+    lineHeight: 21,
 
     fontWeight: '800',
   },
 
   orderMeta: {
-    marginTop: 2,
-
-    color: theme.colors.textSecondary,
-
-    fontSize: 7,
-  },
-
-  /* TIMER */
-
-  timerContainer: {
-    alignItems: 'flex-end',
-
-    paddingTop: 5,
-  },
-
-  timer: {
-    color: theme.colors.textPrimary,
-
-    fontSize: 16,
-
-    fontWeight: '800',
-  },
-
-  timerLabel: {
     marginTop: 1,
 
     color: theme.colors.textSecondary,
@@ -368,55 +590,11 @@ const styles = StyleSheet.create({
     fontSize: 7,
   },
 
-  /* STATUS AT TOP */
-
-  topStatusBadge: {
-    marginTop: 5,
-
-    minHeight: 20,
-
-    justifyContent: 'center',
-
-    paddingHorizontal: theme.spacing.sm,
-
-    borderRadius: theme.radius.sm,
-
-    backgroundColor: theme.colors.primaryLight,
-  },
-
-  preparingBadge: {
-    backgroundColor: '#E8EFFC',
-  },
-
-  topStatusBadge: {
-    marginTop: 5,
-
-    minHeight: 26,
-
-    justifyContent: 'center',
-
-    alignItems: 'center',
-
-    paddingHorizontal: theme.spacing.sm + 2,
-
-    paddingVertical: 3,
-
-    borderRadius: theme.radius.md,
-
-    backgroundColor: theme.colors.primaryLight,
-  },
-
-  topStatusText: {
-    color: theme.colors.textPrimary,
-
-    fontSize: 10,
-
-    fontWeight: '800',
-  },
-
-  preparingText: {
-    color: theme.colors.info,
-  },
+  /*
+  |--------------------------------------------------------------------------
+  | DIVIDER
+  |--------------------------------------------------------------------------
+  */
 
   divider: {
     height: 1,
@@ -424,7 +602,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.border,
   },
 
-  /* CUSTOMER */
+  /*
+  |--------------------------------------------------------------------------
+  | CUSTOMER
+  |--------------------------------------------------------------------------
+  */
 
   customerBox: {
     height: 40,
@@ -468,7 +650,11 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  /* ITEMS */
+  /*
+  |--------------------------------------------------------------------------
+  | ITEMS
+  |--------------------------------------------------------------------------
+  */
 
   itemsSection: {
     paddingHorizontal: theme.spacing.sm,
@@ -490,6 +676,7 @@ const styles = StyleSheet.create({
 
   quantityBox: {
     width: 32,
+
     height: 32,
 
     alignItems: 'center',
@@ -541,14 +728,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /*
+  |--------------------------------------------------------------------------
+  | MORE ITEMS
+  |--------------------------------------------------------------------------
+  */
+
   moreItemsRow: {
     height: 27,
 
     flexDirection: 'row',
 
-    justifyContent: 'center',
-
     alignItems: 'center',
+
+    justifyContent: 'center',
 
     gap: 2,
   },
@@ -561,15 +754,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* BOTTOM */
+  /*
+  |--------------------------------------------------------------------------
+  | BOTTOM
+  |--------------------------------------------------------------------------
+  */
 
   bottomSection: {
     marginTop: 'auto',
   },
 
   /*
-   * Replaces old status footer.
-   */
+  |--------------------------------------------------------------------------
+  | DETAILS
+  |--------------------------------------------------------------------------
+  */
 
   detailsRow: {
     height: 35,
@@ -613,7 +812,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* ACTION */
+  /*
+  |--------------------------------------------------------------------------
+  | ACTIONS
+  |--------------------------------------------------------------------------
+  */
 
   actions: {
     height: 58,
@@ -631,10 +834,18 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
   },
 
+  /*
+  |--------------------------------------------------------------------------
+  | PRIMARY BUTTON
+  |--------------------------------------------------------------------------
+  */
+
   primaryButton: {
     flex: 1,
 
     height: 42,
+
+    flexDirection: 'row',
 
     alignItems: 'center',
 
@@ -652,6 +863,16 @@ const styles = StyleSheet.create({
 
     fontWeight: '800',
   },
+
+  buttonTextWithIcon: {
+    marginLeft: 4,
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | CANCEL
+  |--------------------------------------------------------------------------
+  */
 
   cancelButton: {
     minWidth: 74,
@@ -679,29 +900,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  lockedButton: {
+  /*
+  |--------------------------------------------------------------------------
+  | DELIVERED BUTTON
+  |--------------------------------------------------------------------------
+  */
+
+  deliveredButton: {
     flex: 1,
 
     height: 42,
+
+    flexDirection: 'row',
 
     alignItems: 'center',
 
     justifyContent: 'center',
 
-    paddingHorizontal: theme.spacing.md,
+    gap: 5,
 
     borderRadius: theme.radius.xl,
 
-    backgroundColor: theme.colors.surfaceSecondary,
+    backgroundColor: theme.colors.primary,
   },
 
-  lockedText: {
-    color: theme.colors.textSecondary,
+  deliveredButtonText: {
+    color: theme.colors.textPrimary,
 
-    fontSize: 8,
+    fontSize: 9,
 
-    fontWeight: '700',
-
-    textAlign: 'center',
+    fontWeight: '800',
   },
 });

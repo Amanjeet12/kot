@@ -28,6 +28,12 @@ import { useActiveOrders } from '../../hooks/queries/useActiveOrders';
 
 import { mapTuckShopOrder } from '../../utils/orderMapper';
 
+import { canChangeOrderStatus } from '../../constant/orderStatus';
+
+import { useUpdateOrderStatus } from '../../hooks/mutations/useUpdateOrderStatus';
+
+import OrderStatusConfirmModal from './components/OrderStatusConfirmModal';
+
 const PAGE_SIZE = 20;
 
 const OrdersScreen = ({ navigation }) => {
@@ -69,6 +75,77 @@ const OrdersScreen = ({ navigation }) => {
     start: 0,
     end,
   });
+
+  const updateStatusMutation = useUpdateOrderStatus();
+
+  const [statusDialog, setStatusDialog] = useState({
+    visible: false,
+
+    order: null,
+
+    nextStatus: null,
+  });
+
+  const handleRequestStatusChange = (order, nextStatus) => {
+    if (!canChangeOrderStatus(order.status, nextStatus)) {
+      console.warn(
+        `Invalid status transition: ${order.status} -> ${nextStatus}`,
+      );
+
+      return;
+    }
+
+    setStatusDialog({
+      visible: true,
+
+      order,
+
+      nextStatus,
+    });
+  };
+
+  const closeStatusDialog = () => {
+    if (updateStatusMutation.isPending) {
+      return;
+    }
+
+    setStatusDialog({
+      visible: false,
+
+      order: null,
+
+      nextStatus: null,
+    });
+  };
+
+  const confirmStatusChange = async () => {
+    const { order, nextStatus } = statusDialog;
+
+    if (!order || !nextStatus) {
+      return;
+    }
+
+    try {
+      await updateStatusMutation.mutateAsync({
+        tuckShopOrderId: order.tuckShopOrderId || order.id,
+
+        status: nextStatus,
+      });
+
+      setStatusDialog({
+        visible: false,
+
+        order: null,
+
+        nextStatus: null,
+      });
+    } catch (error) {
+      console.log(
+        'Status update error:',
+        error?.response?.data || error?.message,
+      );
+    }
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -258,8 +335,9 @@ const OrdersScreen = ({ navigation }) => {
           <OrderCard
             order={item}
             isNext={item.rank === 1 && item.status === 'confirmed'}
-            onStartPreparation={() => handleStartPreparation(item)}
-            onCancel={() => handleCancelOrder(item)}
+            onChangeStatus={nextStatus =>
+              handleRequestStatusChange(item, nextStatus)
+            }
             onViewDetails={() =>
               navigation.navigate('OrderDetails', {
                 orderId: item.id,
@@ -409,6 +487,15 @@ const OrdersScreen = ({ navigation }) => {
             keyboardShouldPersistTaps="handled"
           />
         </View>
+
+        <OrderStatusConfirmModal
+          visible={statusDialog.visible}
+          order={statusDialog.order}
+          nextStatus={statusDialog.nextStatus}
+          loading={updateStatusMutation.isPending}
+          onClose={closeStatusDialog}
+          onConfirm={confirmStatusChange}
+        />
       </SafeAreaView>
     );
   }
@@ -438,6 +525,15 @@ const OrdersScreen = ({ navigation }) => {
         onEndReachedThreshold={0.4}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+      />
+
+      <OrderStatusConfirmModal
+        visible={statusDialog.visible}
+        order={statusDialog.order}
+        nextStatus={statusDialog.nextStatus}
+        loading={updateStatusMutation.isPending}
+        onClose={closeStatusDialog}
+        onConfirm={confirmStatusChange}
       />
     </SafeAreaView>
   );
