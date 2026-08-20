@@ -114,17 +114,17 @@ const OrderHistoryFilterBar = ({
       >
         <Ionicons
           name="search-outline"
-          size={15}
-          color={theme.colors.textSecondary}
+          size={20}
+          color={theme.colors.textMuted}
         />
 
         <TextInput
           value={search}
           onChangeText={onSearchChange}
+          allowFontScaling={false}
+          maxFontSizeMultiplier={1}
           placeholder="Search order or customer"
-          placeholderTextColor={
-            theme.colors.textSecondary
-          }
+          placeholderTextColor={theme.colors.textMuted}
           style={styles.searchInput}
         />
       </View>
@@ -208,8 +208,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
 
     borderRadius: theme.radius.xl,
-
-    backgroundColor: theme.colors.surface,
   },
 
   mobileSearchBox: {

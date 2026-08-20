@@ -2,6 +2,7 @@ import api from './axiosInstance';
 
 export const ORDER_ROUTES = {
   ACTIVE_ORDERS: '/backend/kot/tuck_shop_orders',
+  ORDER_HISTORY: '/backend/kot/tuck_shop_orders_history',
 };
 
 export const getActiveOrders = async ({ token, start = 0, end = 20 }) => {
@@ -18,6 +19,34 @@ export const getActiveOrders = async ({ token, start = 0, end = 20 }) => {
   });
 
   return response.data;
+};
+
+export const getOrderHistory = async ({
+  token,
+  fromDate,
+  toDate,
+  start = 0,
+  end = 20,
+}) => {
+  const response = await api.get(ORDER_ROUTES.ORDER_HISTORY, {
+    params: {
+      from_date: fromDate,
+      to_date: toDate,
+      start,
+      end,
+    },
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to fetch order history');
+  }
+
+  return data;
 };
 
 /*

@@ -1,12 +1,23 @@
 import React from 'react';
 
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../../constant';
 
-const OrderHistoryHeader = ({ date = '16 August 2026', onDatePress }) => {
+const OrderHistoryHeader = ({
+  dateLabel,
+  onDatePress,
+  onRefresh,
+  isRefreshing = false,
+}) => {
   return (
     <View style={styles.container}>
       {/* LEFT */}
@@ -21,28 +32,63 @@ const OrderHistoryHeader = ({ date = '16 August 2026', onDatePress }) => {
         </Text>
       </View>
 
-      {/* DATE */}
+      {/* DATE BUTTON */}
 
-      <TouchableOpacity
-        activeOpacity={0.75}
-        onPress={onDatePress}
-        style={styles.dateButton}
-      >
-        <Ionicons
-          name="calendar-outline"
-          size={15}
-          color={theme.colors.textPrimary}
-        />
+      <View style={styles.actions}>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={onDatePress}
+          style={styles.dateButton}
+        >
+          <Ionicons
+            name="calendar-outline"
+            size={14}
+            color={theme.colors.textPrimary}
+          />
 
-        <Text allowFontScaling={false} style={styles.dateText}>
-          {date}
-        </Text>
-      </TouchableOpacity>
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={styles.dateText}
+          >
+            {dateLabel}
+          </Text>
+
+          <Ionicons
+            name="chevron-down"
+            size={11}
+            color={theme.colors.textSecondary}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          disabled={isRefreshing}
+          onPress={onRefresh}
+          style={styles.refreshButton}
+        >
+          {isRefreshing ? (
+            <ActivityIndicator size="small" color={theme.colors.textPrimary} />
+          ) : (
+            <Ionicons
+              name="refresh-outline"
+              size={20}
+              color={theme.colors.textPrimary}
+            />
+          )}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 export default OrderHistoryHeader;
+
+/*
+|--------------------------------------------------------------------------
+| STYLES
+|--------------------------------------------------------------------------
+*/
 
 const styles = StyleSheet.create({
   container: {
@@ -51,7 +97,9 @@ const styles = StyleSheet.create({
     minHeight: 52,
 
     flexDirection: 'row',
+
     alignItems: 'flex-start',
+
     justifyContent: 'space-between',
 
     marginBottom: theme.spacing.lg,
@@ -62,14 +110,6 @@ const styles = StyleSheet.create({
 
     paddingRight: theme.spacing.md,
   },
-
-  /*
-   * IMPORTANT:
-   * Kept compact to match Active Orders.
-   *
-   * Old history screen visually looked ~28px.
-   * This should be around the Active Orders title.
-   */
 
   title: {
     color: theme.colors.textPrimary,
@@ -89,20 +129,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
 
     lineHeight: 18,
+
+    fontWeight: '400',
   },
 
   dateButton: {
+    minWidth: 125,
+
     height: 42,
 
     flexDirection: 'row',
+
     alignItems: 'center',
+
     justifyContent: 'center',
 
-    gap: 7,
+    gap: 6,
 
     paddingHorizontal: theme.spacing.md,
 
     borderWidth: 1,
+
     borderColor: theme.colors.border,
 
     borderRadius: theme.radius.xxl,
@@ -110,7 +157,26 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
 
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+
+  refreshButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
+  },
+
   dateText: {
+    maxWidth: 190,
+
     color: theme.colors.textPrimary,
 
     fontSize: 11,

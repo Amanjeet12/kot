@@ -1,6 +1,12 @@
 import React from 'react';
 
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { theme } from '../../../constant';
 import { useResponsive } from '../../../contexts/ResponsiveContext';
@@ -273,7 +279,13 @@ const EmptyOrders = () => {
 |--------------------------------------------------------------------------
 */
 
-const OrderHistoryTable = ({ orders = [], totalOrders = 0 }) => {
+const OrderHistoryTable = ({
+  orders = [],
+  totalOrders = 0,
+  hasNextPage = false,
+  isFetching = false,
+  onLoadMore,
+}) => {
   const { isTablet } = useResponsive();
 
   /*
@@ -289,6 +301,19 @@ const OrderHistoryTable = ({ orders = [], totalOrders = 0 }) => {
           orders.map(order => <MobileOrderCard key={order.id} order={order} />)
         ) : (
           <EmptyOrders />
+        )}
+
+        {hasNextPage && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            disabled={isFetching}
+            onPress={onLoadMore}
+            style={styles.loadMoreButton}
+          >
+            <Text allowFontScaling={false} style={styles.loadMoreText}>
+              {isFetching ? 'Loading...' : 'Load more'}
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
     );
@@ -333,9 +358,21 @@ const OrderHistoryTable = ({ orders = [], totalOrders = 0 }) => {
           orders
         </Text>
 
-        <Text allowFontScaling={false} style={styles.nextText}>
-          Next page →
-        </Text>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          disabled={!hasNextPage || isFetching}
+          onPress={onLoadMore}
+        >
+          <Text
+            allowFontScaling={false}
+            style={[
+              styles.nextText,
+              (!hasNextPage || isFetching) && styles.nextTextDisabled,
+            ]}
+          >
+            {isFetching ? 'Loading...' : 'Next page →'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -584,6 +621,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  nextTextDisabled: {
+    opacity: 0.4,
+  },
+
   /*
   |--------------------------------------------------------------------------
   | EMPTY
@@ -627,6 +668,20 @@ const styles = StyleSheet.create({
 
   mobileList: {
     gap: theme.spacing.md,
+  },
+
+  loadMoreButton: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.primary,
+  },
+
+  loadMoreText: {
+    color: theme.colors.textOnPrimary,
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   mobileCard: {
