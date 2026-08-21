@@ -117,7 +117,7 @@ const getDateLabel = (startDate, endDate) => {
 |--------------------------------------------------------------------------
 */
 
-const OrderHistoryScreen = () => {
+const OrderHistoryScreen = ({ navigation }) => {
   const { isTablet, isLargeTablet } = useResponsive();
 
   /*
@@ -407,6 +407,7 @@ const OrderHistoryScreen = () => {
                 hasNextPage={historyResponse?.pagination?.hasNextPage}
                 isFetching={isFetching}
                 onLoadMore={handleLoadMore}
+                onOrderPress={order => navigation.navigate('HistoryOrderDetails', { order, isHistory: true })}
               />
             </View>
           </View>
@@ -439,6 +440,7 @@ const OrderHistoryScreen = () => {
               hasNextPage={historyResponse?.pagination?.hasNextPage}
               isFetching={isFetching}
               onLoadMore={handleLoadMore}
+              onOrderPress={order => navigation.navigate('HistoryOrderDetails', { order, isHistory: true })}
             />
           </View>
         </ScrollView>

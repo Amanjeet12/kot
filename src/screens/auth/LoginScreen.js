@@ -73,10 +73,10 @@ const LoginScreen = ({ navigation }) => {
           {isTablet && (
             <View style={styles.leftSection}>
               <View style={styles.brandIcon}>
-                <Text style={styles.brandIconText}>M</Text>
+                <Text style={styles.brandIconText}>W</Text>
               </View>
 
-              <Text style={styles.brandName}>My App</Text>
+              <Text style={styles.brandName}>Workfood KOT</Text>
 
               <Text style={styles.welcomeTitle}>Welcome Back</Text>
 
@@ -96,10 +96,10 @@ const LoginScreen = ({ navigation }) => {
               {!isTablet && (
                 <View style={styles.mobileBrand}>
                   <View style={styles.brandIcon}>
-                    <Text style={styles.brandIconText}>M</Text>
+                    <Text style={styles.brandIconText}>W</Text>
                   </View>
 
-                  <Text style={styles.mobileBrandText}>My App</Text>
+                  <Text style={styles.mobileBrandText}>Workfood KOT</Text>
                 </View>
               )}
 

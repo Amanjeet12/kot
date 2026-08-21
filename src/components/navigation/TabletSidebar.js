@@ -75,7 +75,7 @@ const TabletSidebar = ({ navigation, state, collapsed, onToggleCollapse }) => {
           <Text
             style={[styles.logoLetter, isLargeTablet && styles.logoLetterLarge]}
           >
-            M
+            W
           </Text>
         </View>
 
@@ -85,7 +85,7 @@ const TabletSidebar = ({ navigation, state, collapsed, onToggleCollapse }) => {
               style={[styles.logoTitle, isLargeTablet && styles.logoTitleLarge]}
               numberOfLines={1}
             >
-              My App
+              Workfood KOT
             </Text>
 
             <Text

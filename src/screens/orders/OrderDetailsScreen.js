@@ -1,6 +1,7 @@
 import React from 'react';
 
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -71,9 +72,25 @@ const OrderDetailsScreen = ({ route, navigation }) => {
   const user = useSelector(state => state.auth.user);
 
   const order = route?.params?.order || {};
+  const isHistory = Boolean(route?.params?.isHistory);
   const items = order?.items || [];
 
   const isPreparing = order.status === 'preparing';
+  const normalizedStatus = String(order.status || '').toLowerCase();
+  const historyStatus = normalizedStatus === 'delivered'
+    ? 'Completed'
+    : normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+
+  const handlePrintReceipt = () => {
+    Alert.alert(
+      'Print receipt',
+      `Receipt for Order #${order.orderNumber || order.id} is ready to print.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Print', onPress: () => console.log('Print receipt:', order.id) },
+      ],
+    );
+  };
 
   const collectionPoint =
     order.collectionPoint ||
@@ -172,15 +189,24 @@ const OrderDetailsScreen = ({ route, navigation }) => {
           Order status
         </Text>
 
-        <View style={[styles.statusPill, isPreparing && styles.preparingPill]}>
+        <View style={[
+          styles.statusPill,
+          isPreparing && styles.preparingPill,
+          isHistory && normalizedStatus !== 'cancelled' && styles.completedPill,
+          isHistory && normalizedStatus === 'cancelled' && styles.cancelledPill,
+        ]}>
           <Text
             allowFontScaling={false}
             style={[
               styles.statusPillText,
               isPreparing && styles.preparingPillText,
+              isHistory && normalizedStatus !== 'cancelled' && styles.completedPillText,
+              isHistory && normalizedStatus === 'cancelled' && styles.cancelledPillText,
             ]}
           >
-            {isPreparing
+            {isHistory
+              ? historyStatus
+              : isPreparing
               ? 'Preparing'
               : `Confirmed · Queue #${order.rank || 1}`}
           </Text>
@@ -224,7 +250,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         {/* push actions to bottom only in landscape tablet */}
         {isTabletLandscape && <View style={styles.actionSpacer} />}
 
-        <View style={styles.actions}>
+        {!isHistory && <View style={styles.actions}>
           {!isPreparing ? (
             <>
               <TouchableOpacity activeOpacity={0.8} style={styles.startButton}>
@@ -246,7 +272,22 @@ const OrderDetailsScreen = ({ route, navigation }) => {
               </Text>
             </View>
           )}
-        </View>
+        </View>}
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handlePrintReceipt}
+          style={styles.printButton}
+        >
+          <Ionicons
+            name="print-outline"
+            size={18}
+            color={theme.colors.textPrimary}
+          />
+          <Text allowFontScaling={false} style={styles.printButtonText}>
+            Print receipt
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -269,7 +310,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         </TouchableOpacity>
 
         <Text allowFontScaling={false} style={styles.backText}>
-          Back to active orders
+          {isHistory ? 'Back to order history' : 'Back to active orders'}
         </Text>
       </View>
 
@@ -574,6 +615,22 @@ const styles = StyleSheet.create({
     color: theme.colors.info,
   },
 
+  completedPill: {
+    backgroundColor: '#E7F7F0',
+  },
+
+  completedPillText: {
+    color: theme.colors.success,
+  },
+
+  cancelledPill: {
+    backgroundColor: '#FDEAEA',
+  },
+
+  cancelledPillText: {
+    color: theme.colors.error,
+  },
+
   detailRow: {
     minHeight: 34,
     flexDirection: 'row',
@@ -648,6 +705,26 @@ const styles = StyleSheet.create({
 
   cancelText: {
     color: theme.colors.error,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  printButton: {
+    width: '100%',
+    height: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.surface,
+  },
+
+  printButtonText: {
+    color: theme.colors.textPrimary,
     fontSize: 11,
     fontWeight: '800',
   },

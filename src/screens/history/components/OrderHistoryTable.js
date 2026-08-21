@@ -123,9 +123,9 @@ const TableHeader = () => {
 |--------------------------------------------------------------------------
 */
 
-const TableRow = ({ order }) => {
+const TableRow = ({ order, onPress }) => {
   return (
-    <View style={styles.row}>
+    <TouchableOpacity activeOpacity={0.75} onPress={() => onPress?.(order)} style={styles.row}>
       {/* ORDER */}
 
       <View style={styles.orderColumn}>
@@ -183,7 +183,7 @@ const TableRow = ({ order }) => {
       <View style={styles.statusColumn}>
         <StatusBadge status={order.status} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -193,9 +193,9 @@ const TableRow = ({ order }) => {
 |--------------------------------------------------------------------------
 */
 
-const MobileOrderCard = ({ order }) => {
+const MobileOrderCard = ({ order, onPress }) => {
   return (
-    <View style={styles.mobileCard}>
+    <TouchableOpacity activeOpacity={0.75} onPress={() => onPress?.(order)} style={styles.mobileCard}>
       <View style={styles.mobileTop}>
         <View>
           <Text allowFontScaling={false} style={styles.mobileOrderId}>
@@ -249,7 +249,7 @@ const MobileOrderCard = ({ order }) => {
           </Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -285,6 +285,7 @@ const OrderHistoryTable = ({
   hasNextPage = false,
   isFetching = false,
   onLoadMore,
+  onOrderPress,
 }) => {
   const { isTablet } = useResponsive();
 
@@ -298,7 +299,7 @@ const OrderHistoryTable = ({
     return (
       <View style={styles.mobileList}>
         {orders.length > 0 ? (
-          orders.map(order => <MobileOrderCard key={order.id} order={order} />)
+          orders.map(order => <MobileOrderCard key={order.id} order={order} onPress={onOrderPress} />)
         ) : (
           <EmptyOrders />
         )}
@@ -344,7 +345,7 @@ const OrderHistoryTable = ({
         nestedScrollEnabled
       >
         {orders.length > 0 ? (
-          orders.map(order => <TableRow key={order.id} order={order} />)
+          orders.map(order => <TableRow key={order.id} order={order} onPress={onOrderPress} />)
         ) : (
           <EmptyOrders />
         )}
