@@ -3,6 +3,23 @@ import api from './axiosInstance';
 export const ORDER_ROUTES = {
   ACTIVE_ORDERS: '/backend/kot/tuck_shop_orders',
   ORDER_HISTORY: '/backend/kot/tuck_shop_orders_history',
+  TODAY_TUCK_SHOP_MENU: '/backend/kot/today_tuck_shop_menu',
+};
+
+export const getTodayTuckShopMenu = async ({ token }) => {
+  const response = await api.get(ORDER_ROUTES.TODAY_TUCK_SHOP_MENU, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || "Unable to fetch today's tuck shop menu");
+  }
+
+  return data;
 };
 
 export const getActiveOrders = async ({ token, start = 0, end = 20 }) => {
