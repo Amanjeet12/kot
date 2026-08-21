@@ -1,12 +1,23 @@
 import React, { useEffect, useState } from 'react';
 
-import { Image, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../../constant';
 
-const MenuItemCard = ({ item, onToggle, lowStockLimit = 4 }) => {
+const MenuItemCard = ({
+  item,
+  onToggle,
+  lowStockLimit = 4,
+}) => {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
@@ -100,17 +111,29 @@ const MenuItemCard = ({ item, onToggle, lowStockLimit = 4 }) => {
       {/* RIGHT */}
 
       <View style={styles.rightSection}>
-        <Switch
-          value={item.enabled}
-          onValueChange={onToggle}
-          trackColor={{
-            false: theme.colors.borderDark,
-            true: theme.colors.success,
-          }}
-          thumbColor={theme.colors.white}
-          ios_backgroundColor={theme.colors.borderDark}
-          style={styles.switch}
-        />
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: item.enabled }}
+          accessibilityLabel={`${item.enabled ? 'Disable' : 'Enable'} ${
+            item.name
+          }`}
+          hitSlop={8}
+          onPress={() => onToggle(!item.enabled)}
+          style={styles.switchButton}
+        >
+          <View pointerEvents="none">
+            <Switch
+              value={item.enabled}
+              trackColor={{
+                false: theme.colors.borderDark,
+                true: theme.colors.success,
+              }}
+              thumbColor={theme.colors.white}
+              ios_backgroundColor={theme.colors.borderDark}
+              style={styles.switch}
+            />
+          </View>
+        </Pressable>
 
         <View style={styles.statusArea}>
           <Text
@@ -267,6 +290,11 @@ const styles = StyleSheet.create({
         scaleY: 0.92,
       },
     ],
+  },
+
+  switchButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   statusArea: {

@@ -22,6 +22,30 @@ export const getTodayTuckShopMenu = async ({ token }) => {
   return data;
 };
 
+export const updateTuckShopMenuItemAvailability = async ({
+  token,
+  dailyMenuItemId,
+  isAvailable,
+}) => {
+  const response = await api.patch(
+    `/backend/kot/tuck_shop_menu_item/${dailyMenuItemId}/availability`,
+    { isAvailable },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to update menu item availability');
+  }
+
+  return data;
+};
+
 export const getActiveOrders = async ({ token, start = 0, end = 20 }) => {
   const response = await api.get(ORDER_ROUTES.ACTIVE_ORDERS, {
     params: {

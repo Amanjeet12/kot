@@ -19,8 +19,10 @@ import MenuHeader from './components/MenuHeader';
 import MenuStats from './components/MenuStats';
 import MenuFilterBar from './components/MenuFilterBar';
 import MenuItemCard from './components/MenuItemCard';
+import MenuAvailabilityConfirmModal from './components/MenuAvailabilityConfirmModal';
 
 import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
+import { useUpdateMenuItemAvailability } from '../../hooks/mutations/useUpdateMenuItemAvailability';
 
 const LOW_STOCK_LIMIT = 4;
 
@@ -37,8 +39,6 @@ const MenuScreen = () => {
   |
   */
 
-  const [availabilityOverrides, setAvailabilityOverrides] = useState({});
-
   const {
     data: menuResponse,
     isLoading,
@@ -46,6 +46,8 @@ const MenuScreen = () => {
     error,
     refetch,
   } = useTodayTuckShopMenu();
+
+  const availabilityMutation = useUpdateMenuItemAvailability();
 
   const menuItems = useMemo(() => {
     const items = menuResponse?.data?.items || [];
@@ -66,16 +68,13 @@ const MenuScreen = () => {
         stock: Number(
           item.availableQuantity ?? item.inventory?.availableQuantity ?? 0,
         ),
-        enabled:
-          availabilityOverrides[id] === undefined
-            ? apiAvailability
-            : availabilityOverrides[id],
+        enabled: apiAvailability,
         isLowStock: Boolean(item.inventory?.isLowStock),
         image: Array.isArray(item.image) ? item.image[0] : item.image,
         icon: item.type === 'non-veg' ? 'fast-food-outline' : 'restaurant-outline',
       };
     });
-  }, [availabilityOverrides, menuResponse]);
+  }, [menuResponse]);
 
   /*
   |--------------------------------------------------------------------------
@@ -86,6 +85,12 @@ const MenuScreen = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
 
   const [search, setSearch] = useState('');
+
+  const [availabilityDialog, setAvailabilityDialog] = useState({
+    visible: false,
+    item: null,
+    isAvailable: null,
+  });
 
   /*
   |--------------------------------------------------------------------------
@@ -164,12 +169,54 @@ const MenuScreen = () => {
   |--------------------------------------------------------------------------
   */
 
-  const handleToggleItem = useCallback(itemId => {
-    setAvailabilityOverrides(previous => ({
-      ...previous,
-      [itemId]: !menuItems.find(item => item.id === itemId)?.enabled,
-    }));
-  }, [menuItems]);
+  const handleToggleItem = useCallback(
+    (item, isAvailable) => {
+      setAvailabilityDialog({
+        visible: true,
+        item,
+        isAvailable,
+      });
+    },
+    [],
+  );
+
+  const closeAvailabilityDialog = () => {
+    if (availabilityMutation.isPending) {
+      return;
+    }
+
+    setAvailabilityDialog({
+      visible: false,
+      item: null,
+      isAvailable: null,
+    });
+  };
+
+  const confirmAvailabilityChange = async () => {
+    const { item, isAvailable } = availabilityDialog;
+
+    if (!item || isAvailable === null) {
+      return;
+    }
+
+    try {
+      await availabilityMutation.mutateAsync({
+        dailyMenuItemId: item.dailyMenuItemId,
+        isAvailable,
+      });
+
+      setAvailabilityDialog({
+        visible: false,
+        item: null,
+        isAvailable: null,
+      });
+    } catch (mutationError) {
+      console.log(
+        'Availability confirmation failed:',
+        mutationError?.response?.data || mutationError?.message,
+      );
+    }
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -186,7 +233,6 @@ const MenuScreen = () => {
   };
 
   const handleRefresh = () => {
-    setAvailabilityOverrides({});
     refetch();
   };
 
@@ -309,10 +355,21 @@ const MenuScreen = () => {
               <MenuItemCard
                 item={item}
                 lowStockLimit={LOW_STOCK_LIMIT}
-                onToggle={() => handleToggleItem(item.id)}
+                onToggle={isAvailable =>
+                  handleToggleItem(item, isAvailable)
+                }
               />
             </View>
           )}
+        />
+
+        <MenuAvailabilityConfirmModal
+          visible={availabilityDialog.visible}
+          item={availabilityDialog.item}
+          isAvailable={availabilityDialog.isAvailable}
+          loading={availabilityMutation.isPending}
+          onClose={closeAvailabilityDialog}
+          onConfirm={confirmAvailabilityChange}
         />
       </View>
     </SafeAreaView>
