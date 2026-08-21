@@ -23,10 +23,11 @@ import MenuAvailabilityConfirmModal from './components/MenuAvailabilityConfirmMo
 
 import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
 import { useUpdateMenuItemAvailability } from '../../hooks/mutations/useUpdateMenuItemAvailability';
+import { useTuckShopCategories } from '../../hooks/queries/useTuckShopCategories';
 
 const LOW_STOCK_LIMIT = 4;
 
-const MenuScreen = () => {
+const MenuScreen = ({ navigation }) => {
   const { isTablet, isLargeTablet } = useResponsive();
 
   /*
@@ -49,6 +50,30 @@ const MenuScreen = () => {
 
   const availabilityMutation = useUpdateMenuItemAvailability();
 
+  const {
+    data: categoriesResponse,
+    isFetching: isFetchingCategories,
+    refetch: refetchCategories,
+  } = useTuckShopCategories();
+
+  const categories = useMemo(() => {
+    const responseData = categoriesResponse?.data;
+    const rawCategories = Array.isArray(responseData)
+      ? responseData
+      : responseData?.categories || categoriesResponse?.categories || [];
+
+    return rawCategories
+      .map(category => ({
+        id: category.category_id ?? category.id,
+        name:
+          category.categoryName ??
+          category.category_name ??
+          category.name ??
+          category.category,
+      }))
+      .filter(category => category.id != null && category.name);
+  }, [categoriesResponse]);
+
   const menuItems = useMemo(() => {
     const items = menuResponse?.data?.items || [];
 
@@ -60,6 +85,7 @@ const MenuScreen = () => {
         id,
         dailyMenuItemId: id,
         tuckShopItemId: item.tuck_shop_item_id,
+        categoryId: item.category_id,
         name: item.itemName,
         foodType: item.type,
         category: item.category,
@@ -83,6 +109,8 @@ const MenuScreen = () => {
   */
 
   const [selectedFilter, setSelectedFilter] = useState('all');
+
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
   const [search, setSearch] = useState('');
 
@@ -159,9 +187,13 @@ const MenuScreen = () => {
         item.category?.toLowerCase().includes(searchValue) ||
         item.foodType?.toLowerCase().includes(searchValue);
 
-      return filterMatches && searchMatches;
+      const categoryMatches =
+        selectedCategory === 'all' ||
+        String(item.categoryId) === String(selectedCategory);
+
+      return filterMatches && categoryMatches && searchMatches;
     });
-  }, [menuItems, selectedFilter, search]);
+  }, [menuItems, search, selectedCategory, selectedFilter]);
 
   /*
   |--------------------------------------------------------------------------
@@ -225,15 +257,12 @@ const MenuScreen = () => {
   */
 
   const handleManageInventory = () => {
-    /*
-     * Later:
-     *
-     * navigation.navigate('Inventory');
-     */
+    navigation.navigate('ManageInventory');
   };
 
   const handleRefresh = () => {
     refetch();
+    refetchCategories();
   };
 
   /*
@@ -247,7 +276,7 @@ const MenuScreen = () => {
       <MenuHeader
         onManageInventory={handleManageInventory}
         onRefresh={handleRefresh}
-        isRefreshing={isFetching && !isLoading}
+        isRefreshing={(isFetching && !isLoading) || isFetchingCategories}
       />
 
       <MenuStats summary={summary} />
@@ -256,6 +285,9 @@ const MenuScreen = () => {
         selectedFilter={selectedFilter}
         onFilterChange={setSelectedFilter}
         counts={counts}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
         search={search}
         onSearchChange={setSearch}
       />

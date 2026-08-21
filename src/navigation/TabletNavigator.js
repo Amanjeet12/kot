@@ -3,11 +3,11 @@ import React, { useState } from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 
 import HistoryScreen from '../screens/history/OrderHistoryScreen';
-import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 
 import TabletSidebar from '../components/navigation/TabletSidebar';
 import OrdersStackNavigator from './OrdersStackNavigator';
+import MenuStackNavigator from './MenuStackNavigator';
 
 import { useResponsive } from '../contexts/ResponsiveContext';
 
@@ -58,7 +58,7 @@ const TabletNavigator = () => {
 
       <Drawer.Screen name="History" component={HistoryScreen} />
 
-      <Drawer.Screen name="Menu" component={MenuScreen} />
+      <Drawer.Screen name="Menu" component={MenuStackNavigator} />
 
       <Drawer.Screen name="Profile" component={ProfileScreen} />
     </Drawer.Navigator>

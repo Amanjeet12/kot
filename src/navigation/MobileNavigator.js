@@ -9,9 +9,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import HistoryScreen from '../screens/history/OrderHistoryScreen';
-import MenuScreen from '../screens/menu/MenuScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import OrdersStackNavigator from './OrdersStackNavigator';
+import MenuStackNavigator from './MenuStackNavigator';
 
 import { theme } from '../constant';
 
@@ -128,7 +128,7 @@ const MobileNavigator = () => {
     >
       <Tab.Screen name="Orders" component={OrdersStackNavigator} />
       <Tab.Screen name="History" component={HistoryScreen} />
-      <Tab.Screen name="Menu" component={MenuScreen} />
+      <Tab.Screen name="Menu" component={MenuStackNavigator} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
