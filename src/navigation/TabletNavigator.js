@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 
 import { createDrawerNavigator } from '@react-navigation/drawer';
 
-import ProfileScreen from '../screens/profile/ProfileScreen';
-
 import TabletSidebar from '../components/navigation/TabletSidebar';
 import OrdersStackNavigator from './OrdersStackNavigator';
 import MenuStackNavigator from './MenuStackNavigator';
 import HistoryStackNavigator from './HistoryStackNavigator';
+import ProfileStackNavigator from './ProfileStackNavigator';
 
 import { useResponsive } from '../contexts/ResponsiveContext';
 
@@ -60,7 +59,7 @@ const TabletNavigator = () => {
 
       <Drawer.Screen name="Menu" component={MenuStackNavigator} />
 
-      <Drawer.Screen name="Profile" component={ProfileScreen} />
+      <Drawer.Screen name="Profile" component={ProfileStackNavigator} />
     </Drawer.Navigator>
   );
 };

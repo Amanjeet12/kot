@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import {
   Alert,
@@ -20,14 +20,28 @@ import { useResponsive } from '../../contexts/ResponsiveContext';
 
 import { theme } from '../../constant';
 
+import PrinterManager from '../../services/printer/PrinterManager';
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
+
 const formatDuration = seconds => {
   const minutes = Math.floor((seconds || 0) / 60);
+
   const remainingSeconds = (seconds || 0) % 60;
 
   return `${String(minutes).padStart(2, '0')}:${String(
     remainingSeconds,
   ).padStart(2, '0')}`;
 };
+
+/*
+ * =========================================================
+ * INFO BOX
+ * =========================================================
+ */
 
 const InfoBox = ({ label, value }) => {
   return (
@@ -43,6 +57,12 @@ const InfoBox = ({ label, value }) => {
   );
 };
 
+/*
+ * =========================================================
+ * DETAIL ROW
+ * =========================================================
+ */
+
 const DetailRow = ({ label, value }) => {
   return (
     <View style={styles.detailRow}>
@@ -57,9 +77,21 @@ const DetailRow = ({ label, value }) => {
   );
 };
 
+/*
+ * =========================================================
+ * ORDER DETAILS SCREEN
+ * =========================================================
+ */
+
 const OrderDetailsScreen = ({ route, navigation }) => {
   const { isTablet } = useResponsive();
+
   const { width, height } = useWindowDimensions();
+
+  /*
+   * Prevent multiple print clicks.
+   */
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const isLandscape = width > height;
 
@@ -69,28 +101,40 @@ const OrderDetailsScreen = ({ route, navigation }) => {
    */
   const isTabletLandscape = isTablet && isLandscape;
 
+  /*
+   * Logged-in KOT user.
+   */
   const user = useSelector(state => state.auth.user);
 
+  /*
+   * Order passed through navigation.
+   */
   const order = route?.params?.order || {};
+
   const isHistory = Boolean(route?.params?.isHistory);
-  const items = order?.items || [];
 
-  const isPreparing = order.status === 'preparing';
+  const items = Array.isArray(order?.items) ? order.items : [];
+
+  /*
+   * =======================================================
+   * ORDER STATUS
+   * =======================================================
+   */
+
+  const isPreparing = String(order.status || '').toLowerCase() === 'preparing';
+
   const normalizedStatus = String(order.status || '').toLowerCase();
-  const historyStatus = normalizedStatus === 'delivered'
-    ? 'Completed'
-    : normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
 
-  const handlePrintReceipt = () => {
-    Alert.alert(
-      'Print receipt',
-      `Receipt for Order #${order.orderNumber || order.id} is ready to print.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Print', onPress: () => console.log('Print receipt:', order.id) },
-      ],
-    );
-  };
+  const historyStatus =
+    normalizedStatus === 'delivered'
+      ? 'Completed'
+      : normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+
+  /*
+   * =======================================================
+   * COLLECTION POINT
+   * =======================================================
+   */
 
   const collectionPoint =
     order.collectionPoint ||
@@ -98,10 +142,131 @@ const OrderDetailsScreen = ({ route, navigation }) => {
     user?.location?.locationName ||
     '-';
 
+  /*
+   * =======================================================
+   * TOTAL QUANTITY
+   * =======================================================
+   */
+
   const totalQuantity = items.reduce(
     (total, item) => total + Number(item.quantity || 0),
+
     0,
   );
+
+  /*
+   * =======================================================
+   * PRINT RECEIPT
+   * =======================================================
+   */
+
+  const handlePrintReceipt = async () => {
+    if (isPrinting) {
+      return;
+    }
+
+    try {
+      const printer = await PrinterManager.getPrinter();
+
+      /*
+       * Printer hasn't been configured yet.
+       */
+      if (!printer) {
+        Alert.alert(
+          'Printer not configured',
+          'Configure a printer before printing receipts.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Printer Settings',
+
+              onPress: () =>
+                navigation.navigate('Profile', {
+                  screen: 'PrinterSettingsScreen',
+                }),
+            },
+          ],
+        );
+
+        return;
+      }
+
+      const orderNumber = order.orderNumber || order.id || '-';
+
+      Alert.alert(
+        'Print receipt',
+
+        `Print receipt for Order #${orderNumber}?`,
+
+        [
+          {
+            text: 'Cancel',
+
+            style: 'cancel',
+          },
+
+          {
+            text: 'Print',
+
+            onPress: async () => {
+              try {
+                setIsPrinting(true);
+
+                const receiptOrder = {
+                  ...order,
+
+                  collectionPoint,
+
+                  locationId:
+                    order.locationId || order.location_id || user?.location_id,
+                };
+
+                await PrinterManager.printReceipt(receiptOrder);
+
+                Alert.alert(
+                  'Receipt sent',
+
+                  `Order #${orderNumber} was sent to ${printer.name}.`,
+                );
+              } catch (error) {
+                console.log('[OrderDetails] Print:', error);
+
+                if (error?.code === 'PRINTER_NOT_CONFIGURED') {
+                  navigation.navigate('Profile', {
+                    screen: 'PrinterSettingsScreen',
+                  });
+
+                  return;
+                }
+
+                Alert.alert(
+                  'Printer error',
+
+                  error?.message || 'Unable to send receipt to printer.',
+                );
+              } finally {
+                setIsPrinting(false);
+              }
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      Alert.alert(
+        'Printer error',
+        error?.message || 'Unable to load printer configuration.',
+      );
+    }
+  };
+
+  /*
+   * =======================================================
+   * MAIN ORDER CARD
+   * =======================================================
+   */
 
   const renderMainCard = () => {
     return (
@@ -166,6 +331,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
 
                 <Text allowFontScaling={false} style={styles.itemDescription}>
                   {item.category ? `${item.category} · ` : ''}
+
                   {item.description}
                 </Text>
               </View>
@@ -180,6 +346,12 @@ const OrderDetailsScreen = ({ route, navigation }) => {
     );
   };
 
+  /*
+   * =======================================================
+   * SIDE CARD
+   * =======================================================
+   */
+
   const renderSideCard = () => {
     return (
       <View
@@ -189,19 +361,35 @@ const OrderDetailsScreen = ({ route, navigation }) => {
           Order status
         </Text>
 
-        <View style={[
-          styles.statusPill,
-          isPreparing && styles.preparingPill,
-          isHistory && normalizedStatus !== 'cancelled' && styles.completedPill,
-          isHistory && normalizedStatus === 'cancelled' && styles.cancelledPill,
-        ]}>
+        <View
+          style={[
+            styles.statusPill,
+
+            isPreparing && styles.preparingPill,
+
+            isHistory &&
+              normalizedStatus !== 'cancelled' &&
+              styles.completedPill,
+
+            isHistory &&
+              normalizedStatus === 'cancelled' &&
+              styles.cancelledPill,
+          ]}
+        >
           <Text
             allowFontScaling={false}
             style={[
               styles.statusPillText,
+
               isPreparing && styles.preparingPillText,
-              isHistory && normalizedStatus !== 'cancelled' && styles.completedPillText,
-              isHistory && normalizedStatus === 'cancelled' && styles.cancelledPillText,
+
+              isHistory &&
+                normalizedStatus !== 'cancelled' &&
+                styles.completedPillText,
+
+              isHistory &&
+                normalizedStatus === 'cancelled' &&
+                styles.cancelledPillText,
             ]}
           >
             {isHistory
@@ -248,49 +436,77 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         />
 
         {/* push actions to bottom only in landscape tablet */}
+
         {isTabletLandscape && <View style={styles.actionSpacer} />}
 
-        {!isHistory && <View style={styles.actions}>
-          {!isPreparing ? (
-            <>
-              <TouchableOpacity activeOpacity={0.8} style={styles.startButton}>
-                <Text allowFontScaling={false} style={styles.startButtonText}>
-                  Start preparation
-                </Text>
-              </TouchableOpacity>
+        {!isHistory && (
+          <View style={styles.actions}>
+            {!isPreparing ? (
+              <>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.startButton}
+                >
+                  <Text allowFontScaling={false} style={styles.startButtonText}>
+                    Start preparation
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity activeOpacity={0.8} style={styles.cancelButton}>
-                <Text allowFontScaling={false} style={styles.cancelText}>
-                  Cancel
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.cancelButton}
+                >
+                  <Text allowFontScaling={false} style={styles.cancelText}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.lockedButton}>
+                <Text allowFontScaling={false} style={styles.lockedText}>
+                  Preparation in progress
                 </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.lockedButton}>
-              <Text allowFontScaling={false} style={styles.lockedText}>
-                Preparation in progress
-              </Text>
-            </View>
-          )}
-        </View>}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* PRINT RECEIPT */}
 
         <TouchableOpacity
           activeOpacity={0.8}
+          disabled={isPrinting}
           onPress={handlePrintReceipt}
-          style={styles.printButton}
+          style={[styles.printButton, isPrinting && styles.printButtonDisabled]}
         >
           <Ionicons
             name="print-outline"
             size={18}
-            color={theme.colors.textPrimary}
+            color={
+              isPrinting ? theme.colors.textSecondary : theme.colors.textPrimary
+            }
           />
-          <Text allowFontScaling={false} style={styles.printButtonText}>
-            Print receipt
+
+          <Text
+            allowFontScaling={false}
+            style={[
+              styles.printButtonText,
+
+              isPrinting && styles.printButtonTextDisabled,
+            ]}
+          >
+            {isPrinting ? 'Printing...' : 'Print receipt'}
           </Text>
         </TouchableOpacity>
       </View>
     );
   };
+
+  /*
+   * =======================================================
+   * SCREEN
+   * =======================================================
+   */
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -314,9 +530,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         </Text>
       </View>
 
-      {/* ===================================================== */}
       {/* TABLET LANDSCAPE */}
-      {/* ===================================================== */}
 
       {isTabletLandscape ? (
         <View style={styles.landscapeBody}>
@@ -331,9 +545,10 @@ const OrderDetailsScreen = ({ route, navigation }) => {
           <View style={styles.rightPanel}>{renderSideCard()}</View>
         </View>
       ) : (
-        /* ===================================================== */
-        /* MOBILE + TABLET PORTRAIT */
-        /* ===================================================== */
+        /*
+         * MOBILE + TABLET PORTRAIT
+         */
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.pageContent}
@@ -341,7 +556,6 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         >
           {renderMainCard()}
 
-          {/* In portrait, order status comes below details */}
           <View style={styles.portraitStatusSpacing} />
 
           {renderSideCard()}
@@ -352,6 +566,12 @@ const OrderDetailsScreen = ({ route, navigation }) => {
 };
 
 export default OrderDetailsScreen;
+
+/*
+ * =========================================================
+ * STYLES
+ * =========================================================
+ */
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -385,7 +605,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  /* LANDSCAPE LAYOUT */
+  /* LANDSCAPE */
 
   landscapeBody: {
     flex: 1,
@@ -407,7 +627,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  /* PORTRAIT LAYOUT */
+  /* PORTRAIT */
 
   scroll: {
     flex: 1,
@@ -415,6 +635,7 @@ const styles = StyleSheet.create({
 
   pageContent: {
     paddingHorizontal: theme.spacing.lg,
+
     paddingBottom: theme.spacing.xxl,
   },
 
@@ -426,17 +647,25 @@ const styles = StyleSheet.create({
 
   mainCard: {
     padding: theme.spacing.lg,
+
     borderWidth: 1,
+
     borderColor: theme.colors.border,
+
     borderRadius: theme.radius.card,
+
     backgroundColor: theme.colors.surface,
   },
 
   sideCard: {
     padding: theme.spacing.lg,
+
     borderWidth: 1,
+
     borderColor: theme.colors.border,
+
     borderRadius: theme.radius.card,
+
     backgroundColor: theme.colors.surface,
   },
 
@@ -448,25 +677,33 @@ const styles = StyleSheet.create({
 
   orderHeader: {
     flexDirection: 'row',
+
     justifyContent: 'space-between',
+
     alignItems: 'flex-start',
   },
 
   orderHeading: {
     flex: 1,
+
     paddingRight: theme.spacing.md,
   },
 
   orderNumber: {
     color: theme.colors.textPrimary,
+
     fontSize: 28,
+
     lineHeight: 34,
+
     fontWeight: '800',
   },
 
   orderMeta: {
     marginTop: theme.spacing.xs,
+
     color: theme.colors.textSecondary,
+
     fontSize: 11,
   },
 
@@ -476,19 +713,25 @@ const styles = StyleSheet.create({
 
   paymentType: {
     color: theme.colors.textSecondary,
+
     fontSize: 11,
   },
 
   totalAmount: {
     marginTop: 3,
+
     color: theme.colors.textPrimary,
+
     fontSize: 25,
+
     fontWeight: '800',
   },
 
   sectionDivider: {
     height: 1,
+
     marginVertical: theme.spacing.md,
+
     backgroundColor: theme.colors.border,
   },
 
@@ -496,6 +739,7 @@ const styles = StyleSheet.create({
 
   infoRow: {
     flexDirection: 'row',
+
     gap: theme.spacing.sm,
   },
 
@@ -505,24 +749,35 @@ const styles = StyleSheet.create({
 
   infoBox: {
     flex: 1,
+
     minHeight: 68,
+
     justifyContent: 'center',
+
     padding: theme.spacing.md,
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.surfaceSecondary,
   },
 
   infoLabel: {
     color: theme.colors.textSecondary,
+
     fontSize: 9,
+
     fontWeight: '800',
+
     letterSpacing: 0.5,
   },
 
   infoValue: {
     marginTop: theme.spacing.xs,
+
     color: theme.colors.textPrimary,
+
     fontSize: 13,
+
     fontWeight: '700',
   },
 
@@ -530,33 +785,49 @@ const styles = StyleSheet.create({
 
   itemsList: {
     marginTop: theme.spacing.md,
+
     gap: theme.spacing.md,
   },
 
   itemCard: {
     minHeight: 78,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     padding: theme.spacing.md,
+
     borderWidth: 1,
+
     borderColor: theme.colors.border,
+
     borderRadius: theme.radius.xxl,
+
     backgroundColor: theme.colors.surface,
   },
 
   itemQuantityBox: {
     width: 44,
+
     height: 44,
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
     marginRight: theme.spacing.md,
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.primaryLight,
   },
 
   itemQuantity: {
     color: theme.colors.textPrimary,
+
     fontSize: 15,
+
     fontWeight: '800',
   },
 
@@ -566,20 +837,27 @@ const styles = StyleSheet.create({
 
   itemName: {
     color: theme.colors.textPrimary,
+
     fontSize: 15,
+
     fontWeight: '800',
   },
 
   itemDescription: {
     marginTop: 4,
+
     color: theme.colors.textSecondary,
+
     fontSize: 10,
   },
 
   itemPrice: {
     marginLeft: theme.spacing.md,
+
     color: theme.colors.textPrimary,
+
     fontSize: 14,
+
     fontWeight: '800',
   },
 
@@ -587,17 +865,25 @@ const styles = StyleSheet.create({
 
   sideTitle: {
     color: theme.colors.textPrimary,
+
     fontSize: 15,
+
     fontWeight: '800',
   },
 
   statusPill: {
     alignSelf: 'flex-start',
+
     marginTop: theme.spacing.sm,
+
     marginBottom: theme.spacing.sm,
+
     paddingHorizontal: theme.spacing.md,
+
     paddingVertical: theme.spacing.sm,
+
     borderRadius: theme.radius.round,
+
     backgroundColor: theme.colors.primaryLight,
   },
 
@@ -607,7 +893,9 @@ const styles = StyleSheet.create({
 
   statusPillText: {
     color: theme.colors.textPrimary,
+
     fontSize: 10,
+
     fontWeight: '800',
   },
 
@@ -633,34 +921,47 @@ const styles = StyleSheet.create({
 
   detailRow: {
     minHeight: 34,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     justifyContent: 'space-between',
   },
 
   detailLabel: {
     color: theme.colors.textSecondary,
+
     fontSize: 10,
   },
 
   detailValue: {
     maxWidth: '60%',
+
     color: theme.colors.textPrimary,
+
     fontSize: 10,
+
     fontWeight: '700',
+
     textAlign: 'right',
   },
 
   noteBox: {
     marginTop: theme.spacing.sm,
+
     padding: theme.spacing.md,
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.primaryLight,
   },
 
   noteText: {
     color: theme.colors.textPrimary,
+
     fontSize: 10,
+
     lineHeight: 15,
   },
 
@@ -672,76 +973,125 @@ const styles = StyleSheet.create({
 
   actions: {
     flexDirection: 'row',
+
     gap: theme.spacing.sm,
+
     marginTop: theme.spacing.lg,
   },
 
   startButton: {
     flex: 1,
+
     height: 54,
+
     justifyContent: 'center',
+
     alignItems: 'center',
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.primary,
   },
 
   startButtonText: {
     color: theme.colors.textOnPrimary,
+
     fontSize: 12,
+
     fontWeight: '800',
+
     textAlign: 'center',
   },
 
   cancelButton: {
     minWidth: 110,
+
     height: 54,
+
     justifyContent: 'center',
+
     alignItems: 'center',
+
     borderWidth: 1,
+
     borderColor: '#F2A4A4',
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.surface,
   },
 
   cancelText: {
     color: theme.colors.error,
+
     fontSize: 11,
+
     fontWeight: '800',
   },
 
+  /* PRINT */
+
   printButton: {
     width: '100%',
+
     height: 46,
+
     flexDirection: 'row',
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
     gap: theme.spacing.sm,
+
     marginTop: theme.spacing.sm,
+
     borderWidth: 1,
+
     borderColor: theme.colors.borderDark,
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.surface,
+  },
+
+  printButtonDisabled: {
+    opacity: 0.55,
   },
 
   printButtonText: {
     color: theme.colors.textPrimary,
+
     fontSize: 11,
+
     fontWeight: '800',
+  },
+
+  printButtonTextDisabled: {
+    color: theme.colors.textSecondary,
   },
 
   lockedButton: {
     flex: 1,
+
     height: 54,
+
     justifyContent: 'center',
+
     alignItems: 'center',
+
     borderRadius: theme.radius.xl,
+
     backgroundColor: theme.colors.surfaceSecondary,
   },
 
   lockedText: {
     color: theme.colors.textSecondary,
+
     fontSize: 11,
+
     fontWeight: '700',
+
     textAlign: 'center',
   },
 });

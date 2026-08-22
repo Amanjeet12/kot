@@ -2,22 +2,34 @@ import React from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../constant';
 import { useResponsive } from '../../contexts/ResponsiveContext';
 import { logout } from '../../store/slices/authSlice';
 
-const SettingRow = ({ title, description, value, last }) => (
-  <View style={[styles.settingRow, last && styles.settingRowLast]}>
+const SettingRow = ({ title, description, value, last, onPress }) => (
+  <TouchableOpacity
+    style={[styles.settingRow, last && styles.settingRowLast]}
+    onPress={onPress}
+    activeOpacity={onPress ? 0.7 : 1}
+    disabled={!onPress}
+    accessibilityRole={onPress ? 'button' : undefined}
+  >
     <View style={styles.settingCopy}>
       <Text style={styles.settingTitle}>{title}</Text>
       <Text style={styles.settingDescription}>{description}</Text>
     </View>
-    <Text style={styles.settingValue}>{value}</Text>
-  </View>
+    <View style={styles.settingAction}>
+      <Text style={styles.settingValue}>{value}</Text>
+      <View style={styles.arrowButton}>
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
+      </View>
+    </View>
+  </TouchableOpacity>
 );
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const user = useSelector(state => state.auth.user);
   const { isMobile, isPortrait, isLargeTablet } = useResponsive();
@@ -81,7 +93,7 @@ const ProfileScreen = () => {
         <View style={[styles.card, styles.settingsCard, shouldStack && styles.cardStacked]}>
           <SettingRow title="Collection point" description="Orders are collected from this location." value={`${locationName} · Location ${locationNumber}`} />
           <SettingRow title="Order notifications" description="Sound and visual alert preferences." value="Sound on · High priority" />
-          <SettingRow title="Printer and KOT" description="Kitchen order ticket output." value="Printer connected" />
+          <SettingRow title="Printer and KOT" description="Kitchen order ticket output." value="Printer connected" onPress={() => navigation.navigate('PrinterSettingsScreen')} />
           <SettingRow title="Help and support" description="Report an issue with this device." value="View support" last />
         </View>
         </View>
@@ -139,5 +151,7 @@ const styles = StyleSheet.create({
   settingCopy: { flex: 1, paddingRight: 16 },
   settingTitle: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700' },
   settingDescription: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 6 },
-  settingValue: { maxWidth: '48%', color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+  settingAction: { maxWidth: '52%', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  settingValue: { flexShrink: 1, color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+  arrowButton: { width: 32, height: 32, marginLeft: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
 });
