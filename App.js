@@ -10,6 +10,7 @@ import AppProviders from './src/AppProviders';
 import { ResponsiveProvider } from './src/contexts/ResponsiveContext';
 
 import RootNavigator from './src/navigation/RootNavigator';
+import AppToast from './src/components/feedback/AppToast';
 
 /*
 |--------------------------------------------------------------------------
@@ -40,6 +41,7 @@ const App = () => {
             <RootNavigator />
           </NavigationContainer>
         </AppProviders>
+        <AppToast />
       </ResponsiveProvider>
     </SafeAreaProvider>
   );

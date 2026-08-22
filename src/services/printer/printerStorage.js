@@ -26,7 +26,9 @@ export const getPrinterConfig = async () => {
   } catch (error) {
     console.log('[PrinterStorage] Read error:', error);
 
-    return null;
+    throw new Error('Unable to read the saved printer configuration.', {
+      cause: error,
+    });
   }
 };
 

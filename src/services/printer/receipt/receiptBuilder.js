@@ -115,10 +115,11 @@ export const buildReceipt = (order, config) => {
 
   const kotNumber = order?.kotNumber || order?.kot_number || order?.id || '-';
 
-  const totalQuantity = items.reduce(
-    (total, item) => total + Number(item?.quantity || 0),
-    0,
-  );
+  const totalQuantity = items.reduce((total, item) => {
+    const quantity = Number(item?.quantity);
+
+    return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 0);
+  }, 0);
 
   chunks.push(EscPosProtocol.initialize());
 
@@ -185,7 +186,12 @@ export const buildReceipt = (order, config) => {
   chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
 
   items.forEach((item, index) => {
-    const quantity = Number(item?.quantity || 0);
+    const parsedQuantity = Number(item?.quantity);
+
+    const quantity =
+      Number.isFinite(parsedQuantity) && parsedQuantity > 0
+        ? parsedQuantity
+        : 0;
 
     const price = Number(item?.price || 0);
 

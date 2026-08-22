@@ -164,8 +164,6 @@ class NetworkTransport {
           timeoutId = null;
         }
 
-        socket?.end();
-
         resolve({
           success: true,
 
@@ -200,15 +198,17 @@ class NetworkTransport {
             try {
               socket.setNoDelay(true);
 
-              /*
-               * Some Android versions of react-native-tcp-socket do not call
-               * the optional write callback even though the bytes are sent.
-               * A non-throwing write means the payload was accepted by the
-               * socket; later socket errors are still handled above.
-               */
-              socket.write(data);
+              socket.write(data, undefined, error => {
+                if (error) {
+                  failure(error);
 
-              success();
+                  return;
+                }
+
+                socket.end();
+
+                success();
+              });
             } catch (error) {
               failure(error);
             }

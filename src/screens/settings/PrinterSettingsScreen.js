@@ -10,13 +10,16 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Toast from 'react-native-toast-message';
 
 import { theme } from '../../constant';
+import { useResponsive } from '../../contexts/ResponsiveContext';
 
 import PrinterManager from '../../services/printer/PrinterManager';
 
@@ -27,6 +30,12 @@ import {
 } from '../../services/printer/printerTypes';
 
 const PrinterSettingsScreen = ({ navigation }) => {
+  const { isTablet } = useResponsive();
+
+  const { height } = useWindowDimensions();
+
+  const successToastOffset = isTablet ? 20 : Math.max((height - 64) / 2, 20);
+
   const [config, setConfig] = useState({
     ...DEFAULT_PRINTER_CONFIG,
   });
@@ -97,10 +106,14 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       setConnectionStatus('connected');
 
-      Alert.alert(
-        'Printer connected',
-        'The printer is reachable on the network.',
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Printer connected',
+        text2: 'The printer is reachable on the network.',
+        position: 'top',
+        topOffset: successToastOffset,
+        props: { isTablet },
+      });
     } catch (error) {
       console.log('Printer test:', error);
 
@@ -125,7 +138,14 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       setConnectionStatus('connected');
 
-      Alert.alert('Test sent', 'The test receipt was sent to the printer.');
+      Toast.show({
+        type: 'success',
+        text1: 'Test sent',
+        text2: 'The test receipt was sent to the printer.',
+        position: 'top',
+        topOffset: successToastOffset,
+        props: { isTablet },
+      });
     } catch (error) {
       console.log('Test print:', error);
 
@@ -152,10 +172,14 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       setHasSavedPrinter(true);
 
-      Alert.alert(
-        'Printer saved',
-        'This printer will now be used for receipts.',
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Printer saved',
+        text2: 'This printer will now be used for receipts.',
+        position: 'top',
+        topOffset: successToastOffset,
+        props: { isTablet },
+      });
     } catch (error) {
       Alert.alert(
         'Unable to save',
@@ -178,7 +202,14 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       setConnectionStatus('not_tested');
 
-      Alert.alert('Printer removed', 'The saved printer has been removed.');
+      Toast.show({
+        type: 'success',
+        text1: 'Printer removed',
+        text2: 'The saved printer has been removed.',
+        position: 'top',
+        topOffset: successToastOffset,
+        props: { isTablet },
+      });
     } catch (error) {
       Alert.alert('Error', 'Unable to remove printer.');
     }

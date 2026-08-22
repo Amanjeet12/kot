@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Toast from 'react-native-toast-message';
 
 import { useSelector } from 'react-redux';
 
@@ -226,11 +227,16 @@ const OrderDetailsScreen = ({ route, navigation }) => {
 
                 await PrinterManager.printReceipt(receiptOrder);
 
-                Alert.alert(
-                  'Receipt sent',
-
-                  `Order #${orderNumber} was sent to ${printer.name}.`,
-                );
+                Toast.show({
+                  type: 'success',
+                  text1: 'Receipt sent',
+                  text2: `Order #${orderNumber} was sent to ${printer.name}.`,
+                  position: 'top',
+                  topOffset: isTablet
+                    ? 20
+                    : Math.max((height - 64) / 2, 20),
+                  props: { isTablet },
+                });
               } catch (error) {
                 console.log('[OrderDetails] Print:', error);
 
