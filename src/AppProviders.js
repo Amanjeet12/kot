@@ -5,13 +5,14 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { store, persistor } from './store/store';
 import { queryClient } from './config/queryClient';
 import { SocketProvider } from './contexts/SocketContext';
+import { PrinterProvider } from './contexts/PrinterContext';
 
 const GlobalProviders = ({ children }) => {
   const { token, user, isAuthenticated } = useSelector(state => state.auth);
 
   return (
     <SocketProvider token={token} user={user} isAuthenticated={isAuthenticated}>
-      {children}
+      <PrinterProvider>{children}</PrinterProvider>
     </SocketProvider>
   );
 };

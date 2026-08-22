@@ -13,6 +13,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useResponsive } from '../../../contexts/ResponsiveContext';
 
 import { theme } from '../../../constant';
+import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
 const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
   const { isTablet } = useResponsive();
@@ -35,6 +36,8 @@ const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
 
       <View style={styles.rightContainer}>
         {/* LIVE */}
+
+        <PrinterStatusButton />
 
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />

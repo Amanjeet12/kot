@@ -21,7 +21,7 @@ import { useResponsive } from '../../contexts/ResponsiveContext';
 
 import { theme } from '../../constant';
 
-import PrinterManager from '../../services/printer/PrinterManager';
+import { usePrinter } from '../../contexts/PrinterContext';
 /*
  * =========================================================
  * HELPERS
@@ -93,6 +93,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
    * Prevent multiple print clicks.
    */
   const [isPrinting, setIsPrinting] = useState(false);
+  const { printer, printReceipt } = usePrinter();
 
   const isLandscape = width > height;
 
@@ -167,8 +168,6 @@ const OrderDetailsScreen = ({ route, navigation }) => {
     }
 
     try {
-      const printer = await PrinterManager.getPrinter();
-
       /*
        * Printer hasn't been configured yet.
        */
@@ -225,16 +224,16 @@ const OrderDetailsScreen = ({ route, navigation }) => {
                     order.locationId || order.location_id || user?.location_id,
                 };
 
-                await PrinterManager.printReceipt(receiptOrder);
+                await printReceipt(receiptOrder);
 
                 Toast.show({
                   type: 'success',
                   text1: 'Receipt sent',
-                  text2: `Order #${orderNumber} was sent to ${printer.name}.`,
+                  text2: `Order #${orderNumber} was sent to ${
+                    printer?.name || 'the printer'
+                  }.`,
                   position: 'top',
-                  topOffset: isTablet
-                    ? 20
-                    : Math.max((height - 64) / 2, 20),
+                  topOffset: isTablet ? 20 : Math.max((height - 64) / 2, 20),
                   props: { isTablet },
                 });
               } catch (error) {

@@ -160,9 +160,11 @@ class PrinterManager {
 
     this.validateConfig(printer);
 
-    const data = buildReceipt(order, printer);
+    const normalized = this.normalizeConfig(printer);
 
-    return NetworkTransport.send(printer, data);
+    const data = buildReceipt(order, normalized);
+
+    return NetworkTransport.send(normalized, data);
   }
 }
 

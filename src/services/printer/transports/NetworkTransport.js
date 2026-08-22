@@ -199,15 +199,19 @@ class NetworkTransport {
               socket.setNoDelay(true);
 
               socket.write(data, undefined, error => {
-                if (error) {
-                  failure(error);
+                try {
+                  if (error) {
+                    failure(error);
 
-                  return;
+                    return;
+                  }
+
+                  socket.end();
+
+                  success();
+                } catch (writeError) {
+                  failure(writeError);
                 }
-
-                socket.end();
-
-                success();
               });
             } catch (error) {
               failure(error);

@@ -13,6 +13,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { theme } from '../../../constant';
 
 import { useResponsive } from '../../../contexts/ResponsiveContext';
+import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
 const MenuHeader = ({
   onManageInventory,
@@ -38,6 +39,8 @@ const MenuHeader = ({
       {/* RIGHT */}
 
       <View style={styles.actions}>
+        <PrinterStatusButton />
+
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={onManageInventory}

@@ -11,6 +11,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../../constant';
+import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
 const OrderHistoryHeader = ({
   dateLabel,
@@ -35,6 +36,8 @@ const OrderHistoryHeader = ({
       {/* DATE BUTTON */}
 
       <View style={styles.actions}>
+        <PrinterStatusButton />
+
         <TouchableOpacity
           activeOpacity={0.75}
           onPress={onDatePress}

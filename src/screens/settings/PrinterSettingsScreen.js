@@ -20,6 +20,7 @@ import Toast from 'react-native-toast-message';
 
 import { theme } from '../../constant';
 import { useResponsive } from '../../contexts/ResponsiveContext';
+import { usePrinter } from '../../contexts/PrinterContext';
 
 import PrinterManager from '../../services/printer/PrinterManager';
 
@@ -32,6 +33,10 @@ import {
 const PrinterSettingsScreen = ({ navigation }) => {
   const { isTablet } = useResponsive();
 
+  const {
+    savePrinter,
+    removePrinter: removeSavedPrinter,
+  } = usePrinter();
   const { height } = useWindowDimensions();
 
   const successToastOffset = isTablet ? 20 : Math.max((height - 64) / 2, 20);
@@ -68,6 +73,11 @@ const PrinterSettingsScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.log('Load printer:', error);
+
+      Alert.alert(
+        'Unable to load printer',
+        error?.message || 'The saved printer configuration could not be read.',
+      );
     } finally {
       setLoading(false);
     }
@@ -166,8 +176,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       const current = getCurrentConfig();
 
-      await PrinterManager.savePrinter(current);
-
+      await savePrinter(current);
       setConfig(current);
 
       setHasSavedPrinter(true);
@@ -192,7 +201,9 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
   const removePrinter = async () => {
     try {
-      await PrinterManager.removePrinter();
+      setAction('remove');
+
+      await removeSavedPrinter();
 
       setConfig({
         ...DEFAULT_PRINTER_CONFIG,
@@ -212,6 +223,8 @@ const PrinterSettingsScreen = ({ navigation }) => {
       });
     } catch (error) {
       Alert.alert('Error', 'Unable to remove printer.');
+    } finally {
+      setAction(null);
     }
   };
 

@@ -10,9 +10,19 @@ const mockSocket = {
 
 let connectCallback;
 
+let mockSocketHandlers;
+
 jest.mock('react-native-tcp-socket', () => ({
   createConnection: jest.fn((options, callback) => {
     connectCallback = callback;
+
+    mockSocketHandlers = {};
+
+    mockSocket.on.mockImplementation((event, handler) => {
+      mockSocketHandlers[event] = handler;
+
+      return mockSocket;
+    });
 
     return mockSocket;
   }),
@@ -63,6 +73,54 @@ describe('NetworkTransport.send', () => {
     connectCallback();
 
     await expect(resultPromise).rejects.toThrow('Write failed');
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a socket error and destroys the socket', async () => {
+    const resultPromise = NetworkTransport.send(
+      {host: '192.168.1.12', port: 9100},
+      Buffer.from('receipt'),
+    );
+
+    mockSocketHandlers.error(new Error('Network unavailable'));
+
+    await expect(resultPromise).rejects.toThrow('Network unavailable');
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NetworkTransport.test', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('opens a connection and destroys it after success', async () => {
+    const resultPromise = NetworkTransport.test({
+      host: '192.168.1.12',
+      port: 9100,
+    });
+
+    connectCallback();
+
+    await expect(resultPromise).resolves.toMatchObject({success: true});
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out and destroys the socket', async () => {
+    jest.useFakeTimers();
+
+    const resultPromise = NetworkTransport.test({
+      host: '192.168.1.12',
+      port: 9100,
+    });
+
+    jest.advanceTimersByTime(5000);
+
+    await expect(resultPromise).rejects.toThrow('timed out');
     expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
   });
 });

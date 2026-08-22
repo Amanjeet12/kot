@@ -15,7 +15,7 @@ const normalizeText = value => {
 const formatMoney = value => {
   const number = Number(value || 0);
 
-  if (Number.isNaN(number)) {
+  if (!Number.isFinite(number) || number < 0) {
     return '0';
   }
 
@@ -193,14 +193,20 @@ export const buildReceipt = (order, config) => {
         ? parsedQuantity
         : 0;
 
-    const price = Number(item?.price || 0);
+    const parsedPrice = Number(item?.price);
 
-    const amount = Number(
+    const price =
+      Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
+
+    const parsedAmount = Number(
       item?.totalAmount ??
         item?.total_amount ??
         item?.amount ??
         quantity * price,
     );
+
+    const amount =
+      Number.isFinite(parsedAmount) && parsedAmount >= 0 ? parsedAmount : 0;
 
     const itemName =
       item?.name || item?.itemName || item?.item_name || `Item ${index + 1}`;
