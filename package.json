@@ -24,6 +24,7 @@
     "date-fns": "^4.4.0",
     "react": "19.2.3",
     "react-native": "0.86.2",
+    "react-native-bluetooth-classic": "1.73.0-rc.17",
     "react-native-config": "^1.6.1",
     "react-native-device-info": "^15.0.2",
     "react-native-gesture-handler": "^3.2.1",
