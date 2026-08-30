@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Development USB printer proof. USB host hardware is optional. -->
+    <uses-feature
+      android:name="android.hardware.usb.host"
+      android:required="false" />
+
     <!-- Bluetooth Classic is optional; Wi-Fi/LAN printing remains available. -->
     <uses-feature
       android:name="android.hardware.bluetooth"

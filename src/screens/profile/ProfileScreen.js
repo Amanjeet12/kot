@@ -94,7 +94,16 @@ const ProfileScreen = ({ navigation }) => {
           <SettingRow title="Collection point" description="Orders are collected from this location." value={`${locationName} · Location ${locationNumber}`} />
           <SettingRow title="Order notifications" description="Sound and visual alert preferences." value="Sound on · High priority" />
           <SettingRow title="Printer and KOT" description="Kitchen order ticket output." value="Printer connected" onPress={() => navigation.navigate('PrinterSettingsScreen')} />
-          <SettingRow title="Help and support" description="Report an issue with this device." value="View support" last />
+          <SettingRow title="Help and support" description="Report an issue with this device." value="View support" last={!__DEV__} />
+          {__DEV__ && (
+            <SettingRow
+              title="USB printer proof"
+              description="Inspect USB descriptors and send an isolated ESC/POS test."
+              value="Development only"
+              last
+              onPress={() => navigation.navigate('UsbPrinterSpikeScreen')}
+            />
+          )}
         </View>
         </View>
       </ScrollView>
