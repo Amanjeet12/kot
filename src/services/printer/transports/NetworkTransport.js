@@ -1,8 +1,19 @@
 import TcpSocket from 'react-native-tcp-socket';
+import { Platform } from 'react-native';
 
 const DEFAULT_TIMEOUT = 5000;
 
 class NetworkTransport {
+  getConnectionOptions(config) {
+    return {
+      host: config.host,
+      port: Number(config.port),
+      connectTimeout: DEFAULT_TIMEOUT,
+      reuseAddress: true,
+      ...(Platform.OS === 'android' ? { interface: 'wifi' } : {}),
+    };
+  }
+
   validateConfig(config) {
     if (!config?.host) {
       throw new Error('Printer IP address is required.');
@@ -74,21 +85,7 @@ class NetworkTransport {
         }, DEFAULT_TIMEOUT);
 
         socket = TcpSocket.createConnection(
-          {
-            host: config.host,
-
-            port: Number(config.port),
-
-            connectTimeout: DEFAULT_TIMEOUT,
-
-            reuseAddress: true,
-
-            /*
-             * Android:
-             * keep printer traffic on Wi-Fi.
-             */
-            interface: 'wifi',
-          },
+          this.getConnectionOptions(config),
 
           () => {
             console.log(
@@ -158,10 +155,10 @@ class NetworkTransport {
 
         finished = true;
 
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-
-          timeoutId = null;
+        try {
+          socket?.end();
+        } finally {
+          cleanup();
         }
 
         resolve({
@@ -177,17 +174,7 @@ class NetworkTransport {
         }, DEFAULT_TIMEOUT);
 
         socket = TcpSocket.createConnection(
-          {
-            host: config.host,
-
-            port: Number(config.port),
-
-            connectTimeout: DEFAULT_TIMEOUT,
-
-            reuseAddress: true,
-
-            interface: 'wifi',
-          },
+          this.getConnectionOptions(config),
 
           () => {
             console.log(
@@ -205,8 +192,6 @@ class NetworkTransport {
 
                     return;
                   }
-
-                  socket.end();
 
                   success();
                 } catch (writeError) {

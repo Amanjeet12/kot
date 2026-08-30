@@ -34,6 +34,8 @@ const PrinterSettingsScreen = ({ navigation }) => {
   const { isTablet } = useResponsive();
 
   const {
+    checkConnection,
+    printTestPage,
     savePrinter,
     removePrinter: removeSavedPrinter,
   } = usePrinter();
@@ -112,7 +114,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       const current = getCurrentConfig();
 
-      await PrinterManager.testConnection(current);
+      await checkConnection(current, { throwOnError: true });
 
       setConnectionStatus('connected');
 
@@ -144,7 +146,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       const current = getCurrentConfig();
 
-      await PrinterManager.printTestPage(current);
+      await printTestPage(current);
 
       setConnectionStatus('connected');
 
@@ -401,6 +403,21 @@ const PrinterSettingsScreen = ({ navigation }) => {
             <Switch
               value={config.autoCut}
               onValueChange={value => updateConfig('autoCut', value)}
+            />
+          </View>
+
+          <View style={styles.optionRow}>
+            <View>
+              <Text style={styles.optionTitle}>Printer enabled</Text>
+
+              <Text style={styles.optionDescription}>
+                Allow receipts to be sent to this printer
+              </Text>
+            </View>
+
+            <Switch
+              value={config.enabled !== false}
+              onValueChange={value => updateConfig('enabled', value)}
             />
           </View>
 

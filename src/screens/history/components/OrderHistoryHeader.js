@@ -11,6 +11,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../../constant';
+import { useResponsive } from '../../../contexts/ResponsiveContext';
 import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
 const OrderHistoryHeader = ({
@@ -19,11 +20,13 @@ const OrderHistoryHeader = ({
   onRefresh,
   isRefreshing = false,
 }) => {
+  const { isTablet } = useResponsive();
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isTablet && styles.tabletContainer]}>
       {/* LEFT */}
 
-      <View style={styles.left}>
+      <View style={styles.titleArea}>
         <Text allowFontScaling={false} style={styles.title}>
           Order history
         </Text>
@@ -97,6 +100,12 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
 
+    gap: theme.spacing.md,
+
+    marginBottom: theme.spacing.lg,
+  },
+
+  tabletContainer: {
     minHeight: 52,
 
     flexDirection: 'row',
@@ -104,14 +113,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
 
     justifyContent: 'space-between',
-
-    marginBottom: theme.spacing.lg,
   },
 
-  left: {
+  titleArea: {
     flex: 1,
-
-    paddingRight: theme.spacing.md,
   },
 
   title: {

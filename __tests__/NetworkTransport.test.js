@@ -41,6 +41,10 @@ describe('NetworkTransport.send', () => {
     });
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('resolves only after the socket confirms the write', async () => {
     const resultPromise = NetworkTransport.send(
       {host: '192.168.1.12', port: 9100},
@@ -56,6 +60,7 @@ describe('NetworkTransport.send', () => {
       expect.any(Function),
     );
     expect(mockSocket.end).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a write error and destroys the socket', async () => {
@@ -85,6 +90,20 @@ describe('NetworkTransport.send', () => {
     mockSocketHandlers.error(new Error('Network unavailable'));
 
     await expect(resultPromise).rejects.toThrow('Network unavailable');
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out and destroys the socket', async () => {
+    jest.useFakeTimers();
+
+    const resultPromise = NetworkTransport.send(
+      {host: '192.168.1.12', port: 9100},
+      Buffer.from('receipt'),
+    );
+
+    jest.advanceTimersByTime(5000);
+
+    await expect(resultPromise).rejects.toThrow('timed out');
     expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
   });
 });
@@ -121,6 +140,18 @@ describe('NetworkTransport.test', () => {
     jest.advanceTimersByTime(5000);
 
     await expect(resultPromise).rejects.toThrow('timed out');
+    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a connection error and destroys the socket', async () => {
+    const resultPromise = NetworkTransport.test({
+      host: '192.168.1.12',
+      port: 9100,
+    });
+
+    mockSocketHandlers.error(new Error('Connection refused'));
+
+    await expect(resultPromise).rejects.toThrow('Connection refused');
     expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
   });
 });

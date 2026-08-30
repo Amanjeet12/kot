@@ -43,6 +43,8 @@ export const PrinterProvider = ({ children }) => {
 
   const printerRevisionRef = useRef(0);
 
+  const operationRevisionRef = useRef(0);
+
   const updatePrinter = useCallback(nextPrinter => {
     printerRevisionRef.current += 1;
 
@@ -103,7 +105,7 @@ export const PrinterProvider = ({ children }) => {
 
   const checkConnection = useCallback(
     async (printerConfig = null, options = {}) => {
-      const { silent = false } = options;
+      const { silent = false, throwOnError = false } = options;
 
       /*
        * Avoid two health checks running simultaneously.
@@ -119,6 +121,8 @@ export const PrinterProvider = ({ children }) => {
       }
 
       checkingRef.current = true;
+
+      const operationRevision = ++operationRevisionRef.current;
 
       let finishCheck;
 
@@ -162,7 +166,8 @@ export const PrinterProvider = ({ children }) => {
 
         if (
           !mountedRef.current ||
-          printerRevision !== printerRevisionRef.current
+          printerRevision !== printerRevisionRef.current ||
+          operationRevision !== operationRevisionRef.current
         ) {
           return false;
         }
@@ -179,7 +184,8 @@ export const PrinterProvider = ({ children }) => {
 
         if (
           !mountedRef.current ||
-          printerRevision !== printerRevisionRef.current
+          printerRevision !== printerRevisionRef.current ||
+          operationRevision !== operationRevisionRef.current
         ) {
           return false;
         }
@@ -189,6 +195,10 @@ export const PrinterProvider = ({ children }) => {
         setLastCheckedAt(new Date());
 
         setError(connectionError);
+
+        if (throwOnError) {
+          throw connectionError;
+        }
 
         return false;
       } finally {
@@ -254,6 +264,8 @@ export const PrinterProvider = ({ children }) => {
   const removePrinter = useCallback(async () => {
     await PrinterManager.removePrinter();
 
+    operationRevisionRef.current += 1;
+
     updatePrinter(null);
 
     if (mountedRef.current) {
@@ -279,6 +291,8 @@ export const PrinterProvider = ({ children }) => {
    */
 
   const printReceipt = useCallback(async order => {
+    const operationRevision = ++operationRevisionRef.current;
+
     try {
       const result = await PrinterManager.printReceipt(order);
 
@@ -286,7 +300,10 @@ export const PrinterProvider = ({ children }) => {
         updatePrinter(await PrinterManager.getPrinter());
       }
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current ||
+        operationRevision !== operationRevisionRef.current
+      ) {
         return result;
       }
 
@@ -303,6 +320,13 @@ export const PrinterProvider = ({ children }) => {
     } catch (printError) {
       console.log('[PrinterContext] print failed:', printError);
 
+      if (
+        !mountedRef.current ||
+        operationRevision !== operationRevisionRef.current
+      ) {
+        throw printError;
+      }
+
       if (printError?.code === 'PRINTER_NOT_CONFIGURED') {
         updatePrinter(null);
 
@@ -318,6 +342,36 @@ export const PrinterProvider = ({ children }) => {
       throw printError;
     }
   }, [updatePrinter]);
+
+  const printTestPage = useCallback(async printerConfig => {
+    const operationRevision = ++operationRevisionRef.current;
+
+    try {
+      const result = await PrinterManager.printTestPage(printerConfig);
+
+      if (
+        mountedRef.current &&
+        operationRevision === operationRevisionRef.current
+      ) {
+        setStatus(PRINTER_STATUS.CONNECTED);
+        setLastCheckedAt(new Date());
+        setError(null);
+      }
+
+      return result;
+    } catch (printError) {
+      if (
+        mountedRef.current &&
+        operationRevision === operationRevisionRef.current
+      ) {
+        setStatus(PRINTER_STATUS.DISCONNECTED);
+        setLastCheckedAt(new Date());
+        setError(printError);
+      }
+
+      throw printError;
+    }
+  }, []);
 
   /*
    * ======================================================
@@ -438,6 +492,8 @@ export const PrinterProvider = ({ children }) => {
     savePrinter,
 
     removePrinter,
+
+    printTestPage,
 
     printReceipt,
   };

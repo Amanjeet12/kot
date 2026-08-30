@@ -10,6 +10,7 @@ import {
 
 import {
   CONNECTION_TYPES,
+  DEFAULT_PRINTER_CONFIG,
   PRINTER_PROTOCOLS,
   getCharactersPerLine,
 } from './printerTypes';
@@ -78,29 +79,33 @@ class PrinterManager {
   }
 
   normalizeConfig(config) {
+    const port =
+      config.port === '' || config.port === null || config.port === undefined
+        ? DEFAULT_PRINTER_CONFIG.port
+        : Number(config.port);
+    const paperWidth = Number(
+      config.paperWidth ?? DEFAULT_PRINTER_CONFIG.paperWidth,
+    );
+
     return {
-      ...config,
-
+      id: config.id || DEFAULT_PRINTER_CONFIG.id,
       name: config.name?.trim() || 'Kitchen Printer',
-
-      host: config.host.trim(),
-
-      port: Number(config.port),
-
-      paperWidth: Number(config.paperWidth),
-
-      charactersPerLine: getCharactersPerLine(Number(config.paperWidth)),
-
+      connectionType:
+        config.connectionType || DEFAULT_PRINTER_CONFIG.connectionType,
+      protocol: config.protocol || DEFAULT_PRINTER_CONFIG.protocol,
+      host: String(config.host || '').trim(),
+      port,
+      paperWidth,
+      charactersPerLine: getCharactersPerLine(paperWidth),
       autoCut: config.autoCut !== false,
-
       enabled: config.enabled !== false,
     };
   }
 
   async savePrinter(config) {
-    this.validateConfig(config);
-
     const normalized = this.normalizeConfig(config);
+
+    this.validateConfig(normalized);
 
     await savePrinterConfig(normalized);
 
@@ -118,9 +123,11 @@ class PrinterManager {
       throw new Error('Printer is not configured.');
     }
 
-    this.validateConfig(printer);
+    const normalized = this.normalizeConfig(printer);
 
-    return NetworkTransport.test(printer);
+    this.validateConfig(normalized);
+
+    return NetworkTransport.test(normalized);
   }
 
   async printTestPage(config = null) {
@@ -130,9 +137,9 @@ class PrinterManager {
       throw new Error('Printer is not configured.');
     }
 
-    this.validateConfig(printer);
-
     const normalized = this.normalizeConfig(printer);
+
+    this.validateConfig(normalized);
 
     const data = buildTestReceipt(normalized);
 
@@ -158,9 +165,9 @@ class PrinterManager {
       throw new Error('Printer is disabled.');
     }
 
-    this.validateConfig(printer);
-
     const normalized = this.normalizeConfig(printer);
+
+    this.validateConfig(normalized);
 
     const data = buildReceipt(order, normalized);
 

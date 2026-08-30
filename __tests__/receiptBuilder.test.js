@@ -49,6 +49,15 @@ describe('buildReceipt', () => {
 
     expect(receipt.includes(Buffer.from([0x1d, 0x56, 0x00]))).toBe(false);
   });
+
+  it('appends a cutter command when autoCut is true', () => {
+    const receipt = buildReceipt(
+      {orderNumber: '42', items: [], totalAmount: 10},
+      {paperWidth: 80, charactersPerLine: 48, autoCut: true},
+    );
+
+    expect(receipt.includes(Buffer.from([0x1d, 0x56, 0x00]))).toBe(true);
+  });
 });
 
 describe('PrinterManager validation', () => {
@@ -70,5 +79,22 @@ describe('PrinterManager validation', () => {
     expect(() =>
       PrinterManager.validateConfig({...validConfig, port: 70000}),
     ).toThrow('valid printer port');
+  });
+
+  it('defaults a missing port and removes stale fields when saving', async () => {
+    const {savePrinterConfig} = require('../src/services/printer/printerStorage');
+
+    await PrinterManager.savePrinter({
+      ...validConfig,
+      port: '',
+      obsoleteModel: 'legacy-printer',
+    });
+
+    expect(savePrinterConfig).toHaveBeenCalledWith(
+      expect.objectContaining({port: 9100}),
+    );
+    expect(savePrinterConfig.mock.calls[0][0]).not.toHaveProperty(
+      'obsoleteModel',
+    );
   });
 });

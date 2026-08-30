@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 
 import {
   Alert,
@@ -93,6 +93,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
    * Prevent multiple print clicks.
    */
   const [isPrinting, setIsPrinting] = useState(false);
+  const printActionRef = useRef(false);
   const { printer, printReceipt } = usePrinter();
 
   const isLandscape = width > height;
@@ -163,15 +164,19 @@ const OrderDetailsScreen = ({ route, navigation }) => {
    */
 
   const handlePrintReceipt = async () => {
-    if (isPrinting) {
+    if (printActionRef.current) {
       return;
     }
+
+    printActionRef.current = true;
 
     try {
       /*
        * Printer hasn't been configured yet.
        */
       if (!printer) {
+        printActionRef.current = false;
+
         Alert.alert(
           'Printer not configured',
           'Configure a printer before printing receipts.',
@@ -206,6 +211,10 @@ const OrderDetailsScreen = ({ route, navigation }) => {
             text: 'Cancel',
 
             style: 'cancel',
+
+            onPress: () => {
+              printActionRef.current = false;
+            },
           },
 
           {
@@ -253,6 +262,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
                   error?.message || 'Unable to send receipt to printer.',
                 );
               } finally {
+                printActionRef.current = false;
                 setIsPrinting(false);
               }
             },
@@ -260,6 +270,8 @@ const OrderDetailsScreen = ({ route, navigation }) => {
         ],
       );
     } catch (error) {
+      printActionRef.current = false;
+
       Alert.alert(
         'Printer error',
         error?.message || 'Unable to load printer configuration.',

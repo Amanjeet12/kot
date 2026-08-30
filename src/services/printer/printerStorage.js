@@ -9,7 +9,13 @@ export const savePrinterConfig = async config => {
     throw new Error('Printer configuration is required.');
   }
 
-  await printerStorage.setItem(PRINTER_KEY, JSON.stringify(config));
+  try {
+    await printerStorage.setItem(PRINTER_KEY, JSON.stringify(config));
+  } catch (error) {
+    throw new Error('Unable to save the printer configuration.', {
+      cause: error,
+    });
+  }
 
   return config;
 };
@@ -22,7 +28,15 @@ export const getPrinterConfig = async () => {
       return null;
     }
 
-    return JSON.parse(value);
+    try {
+      return JSON.parse(value);
+    } catch (parseError) {
+      console.log('[PrinterStorage] Invalid saved configuration:', parseError);
+
+      await printerStorage.removeItem(PRINTER_KEY);
+
+      return null;
+    }
   } catch (error) {
     console.log('[PrinterStorage] Read error:', error);
 
@@ -33,7 +47,13 @@ export const getPrinterConfig = async () => {
 };
 
 export const removePrinterConfig = async () => {
-  await printerStorage.removeItem(PRINTER_KEY);
+  try {
+    await printerStorage.removeItem(PRINTER_KEY);
+  } catch (error) {
+    throw new Error('Unable to remove the printer configuration.', {
+      cause: error,
+    });
+  }
 
   return true;
 };

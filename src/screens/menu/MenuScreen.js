@@ -354,15 +354,16 @@ const MenuScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.page}>
-        <View
-          style={[
-            styles.fixedHeader,
-            !isTablet && styles.mobileFixedHeader,
-            isLargeTablet && styles.fixedHeaderLarge,
-          ]}
-        >
-          <HeaderSection />
-        </View>
+        {isTablet && (
+          <View
+            style={[
+              styles.fixedHeader,
+              isLargeTablet && styles.fixedHeaderLarge,
+            ]}
+          >
+            <HeaderSection />
+          </View>
+        )}
 
         <FlatList
           key={isTablet ? 'tablet-menu-grid' : 'mobile-menu-list'}
@@ -371,12 +372,12 @@ const MenuScreen = ({ navigation }) => {
           keyExtractor={item => String(item.id)}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={isTablet ? null : <HeaderSection />}
           ListEmptyComponent={EmptyState}
           columnWrapperStyle={isTablet ? styles.columnWrapper : undefined}
           style={styles.itemsList}
           contentContainerStyle={[
-            styles.itemsContent,
-            !isTablet && styles.mobileItemsContent,
+            isTablet ? styles.itemsContent : styles.mobileContent,
             isLargeTablet && styles.itemsContentLarge,
             filteredMenuItems.length === 0 && styles.emptyContent,
           ]}
@@ -432,11 +433,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  mobileFixedHeader: {
-    paddingTop: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md,
-  },
-
   fixedHeaderLarge: {
     paddingHorizontal: theme.spacing.xxl,
   },
@@ -451,8 +447,11 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.xxl,
   },
 
-  mobileItemsContent: {
+  mobileContent: {
     paddingHorizontal: theme.spacing.md,
+
+    paddingTop: theme.spacing.md,
+
     paddingBottom: theme.spacing.xxxl,
   },
 

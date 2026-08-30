@@ -6,6 +6,7 @@ jest.mock('../src/services/printer/PrinterManager', () => ({
   default: {
     getPrinter: jest.fn(),
     printReceipt: jest.fn(),
+    printTestPage: jest.fn(),
     removePrinter: jest.fn(),
     savePrinter: jest.fn(),
     testConnection: jest.fn(),
@@ -89,6 +90,17 @@ describe('PrinterProvider', () => {
     await unmountProvider(renderer);
   });
 
+  it('sets not configured when no printer is saved', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(null);
+
+    const renderer = await renderProvider();
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.NOT_CONFIGURED);
+    expect(mockPrinterManager.testConnection).not.toHaveBeenCalled();
+
+    await unmountProvider(renderer);
+  });
+
   it('retries a disconnected printer', async () => {
     mockPrinterManager.testConnection
       .mockRejectedValueOnce(new Error('Printer offline'))
@@ -136,6 +148,37 @@ describe('PrinterProvider', () => {
     });
 
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
+  it('removes a printer and resets global status', async () => {
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      await latestContext.removePrinter();
+    });
+
+    expect(mockPrinterManager.removePrinter).toHaveBeenCalledTimes(1);
+    expect(latestContext.status).toBe(PRINTER_STATUS.NOT_CONFIGURED);
+    expect(latestContext.printer).toBeNull();
+
+    await unmountProvider(renderer);
+  });
+
+  it('updates global status after a successful test print', async () => {
+    mockPrinterManager.testConnection.mockRejectedValue(
+      new Error('Printer offline'),
+    );
+    mockPrinterManager.printTestPage.mockResolvedValue({success: true});
+
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      await latestContext.printTestPage(savedPrinter);
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
 
     await unmountProvider(renderer);
   });
