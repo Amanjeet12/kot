@@ -20,6 +20,7 @@ import Toast from 'react-native-toast-message';
 
 import { theme } from '../../constant';
 import BluetoothPrinterPickerModal from '../../components/printer/BluetoothPrinterPickerModal';
+import UsbPrinterPickerModal from '../../components/printer/UsbPrinterPickerModal';
 import { useResponsive } from '../../contexts/ResponsiveContext';
 import { usePrinter } from '../../contexts/PrinterContext';
 
@@ -30,7 +31,13 @@ import {
   CONNECTION_TYPES,
   DEFAULT_PRINTER_CONFIG,
   PAPER_WIDTHS,
+  USB_TYPES,
 } from '../../services/printer/printerTypes';
+
+const usbTypeLabel = usbType =>
+  usbType === USB_TYPES.PRINTER_CLASS
+    ? 'USB Printer Class'
+    : 'Vendor-specific USB printer';
 
 const PrinterSettingsScreen = ({ navigation }) => {
   const { isTablet } = useResponsive();
@@ -58,6 +65,8 @@ const PrinterSettingsScreen = ({ navigation }) => {
   const [hasSavedPrinter, setHasSavedPrinter] = useState(false);
 
   const [showBluetoothPicker, setShowBluetoothPicker] = useState(false);
+
+  const [showUsbPicker, setShowUsbPicker] = useState(false);
 
   useEffect(() => {
     loadPrinter();
@@ -121,6 +130,20 @@ const PrinterSettingsScreen = ({ navigation }) => {
         };
       }
 
+      if (connectionType === CONNECTION_TYPES.USB) {
+        return {
+          ...shared,
+          usbType: '',
+          vendorId: null,
+          productId: null,
+          serialNumber: '',
+          manufacturerName: '',
+          productName: '',
+          interfaceClass: null,
+          deviceName: '',
+        };
+      }
+
       return {
         ...shared,
         host: '',
@@ -142,6 +165,15 @@ const PrinterSettingsScreen = ({ navigation }) => {
     setShowBluetoothPicker(false);
   };
 
+  const handleUsbDeviceSelected = selection => {
+    setConfig(previous => ({
+      ...previous,
+      ...selection.identity,
+    }));
+    setConnectionStatus('not_tested');
+    setShowUsbPicker(false);
+  };
+
   const getCurrentConfig = () => PrinterManager.normalizeConfig(config);
 
   const handleTestConnection = async () => {
@@ -152,7 +184,10 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       const current = getCurrentConfig();
 
-      await checkConnection(current, { throwOnError: true });
+      await checkConnection(current, {
+        throwOnError: true,
+        requestPermission: true,
+      });
 
       setConnectionStatus('connected');
 
@@ -374,6 +409,23 @@ const PrinterSettingsScreen = ({ navigation }) => {
               />
               <Text style={styles.connectionTypeText}>Bluetooth</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={Boolean(action)}
+              onPress={() => changeConnectionType(CONNECTION_TYPES.USB)}
+              style={[
+                styles.connectionTypeButton,
+                config.connectionType === CONNECTION_TYPES.USB &&
+                  styles.connectionTypeButtonActive,
+              ]}
+            >
+              <Ionicons
+                name="hardware-chip-outline"
+                size={18}
+                color={theme.colors.textPrimary}
+              />
+              <Text style={styles.connectionTypeText}>USB</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.divider} />
@@ -383,13 +435,17 @@ const PrinterSettingsScreen = ({ navigation }) => {
               <Text style={styles.cardTitle}>
                 {config.connectionType === CONNECTION_TYPES.BLUETOOTH
                   ? 'Bluetooth Printer'
-                  : 'Network Printer'}
+                  : config.connectionType === CONNECTION_TYPES.USB
+                    ? 'USB Printer'
+                    : 'Network Printer'}
               </Text>
 
               <Text style={styles.cardSubtitle}>
                 {config.connectionType === CONNECTION_TYPES.BLUETOOTH
                   ? 'Bluetooth Classic'
-                  : 'Wi-Fi or Ethernet'}
+                  : config.connectionType === CONNECTION_TYPES.USB
+                    ? 'Android USB Host / OTG'
+                    : 'Wi-Fi or Ethernet'}
               </Text>
             </View>
 
@@ -435,7 +491,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
                 style={styles.input}
               />
             </>
-          ) : (
+          ) : config.connectionType === CONNECTION_TYPES.BLUETOOTH ? (
             <>
               <Text style={styles.label}>SELECTED BLUETOOTH DEVICE</Text>
 
@@ -470,6 +526,50 @@ const PrinterSettingsScreen = ({ navigation }) => {
                   />
                   <Text style={styles.secondaryButtonText}>
                     Choose Bluetooth Printer
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.label}>SELECTED USB PRINTER</Text>
+
+              {config.usbType ? (
+                <View style={styles.selectedDeviceCard}>
+                  <View style={styles.selectedDeviceCopy}>
+                    <Text style={styles.selectedDeviceName} numberOfLines={1}>
+                      {config.productName ||
+                        config.manufacturerName ||
+                        'USB Printer'}
+                    </Text>
+                    <Text style={styles.selectedDeviceAddress}>
+                      Vendor {config.vendorId} · Product {config.productId}
+                    </Text>
+                    <Text style={styles.selectedDeviceAddress}>
+                      {usbTypeLabel(config.usbType)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    disabled={Boolean(action)}
+                    onPress={() => setShowUsbPicker(true)}
+                    style={styles.changeDeviceButton}
+                  >
+                    <Text style={styles.changeDeviceText}>Change Printer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  disabled={Boolean(action)}
+                  onPress={() => setShowUsbPicker(true)}
+                  style={styles.chooseDeviceButton}
+                >
+                  <Ionicons
+                    name="hardware-chip-outline"
+                    size={19}
+                    color={theme.colors.textPrimary}
+                  />
+                  <Text style={styles.secondaryButtonText}>
+                    Choose USB Printer
                   </Text>
                 </TouchableOpacity>
               )}
@@ -560,7 +660,9 @@ const PrinterSettingsScreen = ({ navigation }) => {
             <Text style={styles.infoText}>
               {config.connectionType === CONNECTION_TYPES.BLUETOOTH
                 ? 'The printer must remain paired in Android. Workfood saves only its name and Bluetooth address and reconnects for each print.'
-                : 'The tablet and printer must be reachable on the same local network. Enter the IP shown on the printer network configuration page.'}
+                : config.connectionType === CONNECTION_TYPES.USB
+                  ? 'Connect the powered printer through USB/OTG. Workfood finds the saved hardware and opens a fresh USB connection for every print.'
+                  : 'The tablet and printer must be reachable on the same local network. Enter the IP shown on the printer network configuration page.'}
             </Text>
           </View>
 
@@ -577,7 +679,9 @@ const PrinterSettingsScreen = ({ navigation }) => {
                   name={
                     config.connectionType === CONNECTION_TYPES.BLUETOOTH
                       ? 'bluetooth-outline'
-                      : 'wifi-outline'
+                      : config.connectionType === CONNECTION_TYPES.USB
+                        ? 'hardware-chip-outline'
+                        : 'wifi-outline'
                   }
                   size={18}
                   color={theme.colors.textPrimary}
@@ -636,6 +740,12 @@ const PrinterSettingsScreen = ({ navigation }) => {
         visible={showBluetoothPicker}
         onClose={() => setShowBluetoothPicker(false)}
         onSelect={handleBluetoothDeviceSelected}
+      />
+
+      <UsbPrinterPickerModal
+        visible={showUsbPicker}
+        onClose={() => setShowUsbPicker(false)}
+        onSelect={handleUsbDeviceSelected}
       />
     </SafeAreaView>
   );

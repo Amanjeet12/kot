@@ -1,5 +1,6 @@
 import NetworkTransport from './transports/NetworkTransport';
 import BluetoothTransport from './transports/BluetoothTransport';
+import UsbTransport from './transports/UsbTransport';
 
 import { buildReceipt, buildTestReceipt } from './receipt/receiptBuilder';
 
@@ -14,6 +15,7 @@ import {
   CONNECTION_TYPES,
   DEFAULT_PRINTER_CONFIG,
   PRINTER_PROTOCOLS,
+  USB_TYPES,
   getCharactersPerLine,
 } from './printerTypes';
 
@@ -99,6 +101,43 @@ class PrinterManager {
 
         return true;
 
+      case CONNECTION_TYPES.USB: {
+        if (config.usbType === USB_TYPES.SERIAL) {
+          throw new Error('USB serial printers require a supported serial driver.');
+        }
+
+        if (
+          ![USB_TYPES.PRINTER_CLASS, USB_TYPES.VENDOR_SPECIFIC].includes(
+            config.usbType,
+          )
+        ) {
+          throw new Error('Select a supported USB printer.');
+        }
+
+        const vendorId = Number(config.vendorId);
+        const productId = Number(config.productId);
+
+        if (
+          !Number.isInteger(vendorId) ||
+          vendorId < 0 ||
+          vendorId > 0xffff ||
+          !Number.isInteger(productId) ||
+          productId < 0 ||
+          productId > 0xffff
+        ) {
+          throw new Error('The USB printer identity is incomplete.');
+        }
+
+        const expectedInterfaceClass =
+          config.usbType === USB_TYPES.PRINTER_CLASS ? 7 : 255;
+
+        if (Number(config.interfaceClass) !== expectedInterfaceClass) {
+          throw new Error('The saved USB printer interface is invalid.');
+        }
+
+        return true;
+      }
+
       default:
         throw new Error('Unsupported printer connection type.');
     }
@@ -148,6 +187,20 @@ class PrinterManager {
       };
     }
 
+    if (connectionType === CONNECTION_TYPES.USB) {
+      return {
+        ...sharedConfig,
+        usbType: String(config.usbType || '').trim(),
+        vendorId: Number(config.vendorId),
+        productId: Number(config.productId),
+        serialNumber: String(config.serialNumber || '').trim(),
+        manufacturerName: String(config.manufacturerName || '').trim(),
+        productName: String(config.productName || '').trim(),
+        interfaceClass: Number(config.interfaceClass),
+        deviceName: String(config.deviceName || '').trim(),
+      };
+    }
+
     return sharedConfig;
   }
 
@@ -158,6 +211,9 @@ class PrinterManager {
 
       case CONNECTION_TYPES.BLUETOOTH:
         return BluetoothTransport;
+
+      case CONNECTION_TYPES.USB:
+        return UsbTransport;
 
       default:
         throw new Error('Unsupported printer connection type.');
@@ -178,7 +234,7 @@ class PrinterManager {
     return removePrinterConfig();
   }
 
-  async testConnection(config = null) {
+  async testConnection(config = null, options = {}) {
     const printer = config || (await this.getPrinter());
 
     if (!printer) {
@@ -189,7 +245,7 @@ class PrinterManager {
 
     this.validateConfig(normalized);
 
-    return this.getTransport(normalized).test(normalized);
+    return this.getTransport(normalized).test(normalized, options);
   }
 
   async printTestPage(config = null) {

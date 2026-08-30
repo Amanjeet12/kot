@@ -11,6 +11,7 @@ import { AppState } from 'react-native';
 
 import PrinterManager from '../services/printer/PrinterManager';
 import { CONNECTION_TYPES } from '../services/printer/printerTypes';
+import UsbDeviceService from '../services/printer/usb/UsbDeviceService';
 
 export const PRINTER_STATUS = {
   NOT_CONFIGURED: 'not_configured',
@@ -21,11 +22,19 @@ export const PRINTER_STATUS = {
 
 const NETWORK_HEALTH_CHECK_INTERVAL = 30000;
 const BLUETOOTH_HEALTH_CHECK_INTERVAL = 90000;
+const USB_HEALTH_CHECK_INTERVAL = 300000;
 
-export const getPrinterHealthCheckInterval = connectionType =>
-  connectionType === CONNECTION_TYPES.BLUETOOTH
-    ? BLUETOOTH_HEALTH_CHECK_INTERVAL
-    : NETWORK_HEALTH_CHECK_INTERVAL;
+export const getPrinterHealthCheckInterval = connectionType => {
+  if (connectionType === CONNECTION_TYPES.BLUETOOTH) {
+    return BLUETOOTH_HEALTH_CHECK_INTERVAL;
+  }
+
+  if (connectionType === CONNECTION_TYPES.USB) {
+    return USB_HEALTH_CHECK_INTERVAL;
+  }
+
+  return NETWORK_HEALTH_CHECK_INTERVAL;
+};
 
 const PrinterContext = createContext(null);
 
@@ -112,7 +121,11 @@ export const PrinterProvider = ({ children }) => {
 
   const checkConnection = useCallback(
     async (printerConfig = null, options = {}) => {
-      const { silent = false, throwOnError = false } = options;
+      const {
+        requestPermission = false,
+        silent = false,
+        throwOnError = false,
+      } = options;
 
       /*
        * Avoid two health checks running simultaneously.
@@ -169,7 +182,9 @@ export const PrinterProvider = ({ children }) => {
           setStatus(PRINTER_STATUS.CHECKING);
         }
 
-        await PrinterManager.testConnection(currentPrinter);
+        await PrinterManager.testConnection(currentPrinter, {
+          requestPermission,
+        });
 
         if (
           !mountedRef.current ||
@@ -227,6 +242,7 @@ export const PrinterProvider = ({ children }) => {
 
   const retryConnection = useCallback(async () => {
     return checkConnection(null, {
+      requestPermission: true,
       silent: false,
     });
   }, [checkConnection]);
@@ -261,7 +277,10 @@ export const PrinterProvider = ({ children }) => {
 
       updatePrinter(savedPrinter);
 
-      await checkConnection(savedPrinter, { silent: false });
+      await checkConnection(savedPrinter, {
+        requestPermission: true,
+        silent: false,
+      });
 
       return savedPrinter;
     },
@@ -431,6 +450,7 @@ export const PrinterProvider = ({ children }) => {
        */
       if (nextState === 'active' && previousState !== 'active') {
         checkConnection(null, {
+          requestPermission: false,
           silent: true,
         });
       }
@@ -466,12 +486,40 @@ export const PrinterProvider = ({ children }) => {
          * Keep current UI state while doing
          * automatic background health checks.
          */
+        requestPermission: false,
         silent: true,
       });
     }, getPrinterHealthCheckInterval(printer.connectionType));
 
     return () => {
       clearInterval(interval);
+    };
+  }, [printer, checkConnection]);
+
+  /*
+   * USB attach/detach events are the primary USB health signal. They re-use
+   * the same generic connection check and never show a permission dialog.
+   */
+  useEffect(() => {
+    if (printer?.connectionType !== CONNECTION_TYPES.USB) {
+      return undefined;
+    }
+
+    let subscription;
+
+    try {
+      subscription = UsbDeviceService.addConnectionListener(() => {
+        return checkConnection(printer, {
+          requestPermission: false,
+          silent: true,
+        });
+      });
+    } catch (listenerError) {
+      console.log('[PrinterContext] USB listener:', listenerError);
+    }
+
+    return () => {
+      subscription?.remove();
     };
   }, [printer, checkConnection]);
 

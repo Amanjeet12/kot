@@ -1,10 +1,18 @@
 export const CONNECTION_TYPES = {
   NETWORK: 'network',
   BLUETOOTH: 'bluetooth',
+  USB: 'usb',
 };
 
 export const BLUETOOTH_TYPES = {
   CLASSIC: 'classic',
+};
+
+export const USB_TYPES = {
+  PRINTER_CLASS: 'printer_class',
+  VENDOR_SPECIFIC: 'vendor_specific',
+  SERIAL: 'usb_serial',
+  UNSUPPORTED: 'unsupported',
 };
 
 export const PRINTER_PROTOCOLS = {
