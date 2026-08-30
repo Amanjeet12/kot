@@ -94,16 +94,6 @@ const ProfileScreen = ({ navigation }) => {
           <SettingRow title="Collection point" description="Orders are collected from this location." value={`${locationName} · Location ${locationNumber}`} />
           <SettingRow title="Order notifications" description="Sound and visual alert preferences." value="Sound on · High priority" />
           <SettingRow title="Printer and KOT" description="Kitchen order ticket output." value="Printer connected" onPress={() => navigation.navigate('PrinterSettingsScreen')} />
-          {__DEV__ && (
-            <SettingRow
-              title="Bluetooth printer proof"
-              description="Paired-device, RFCOMM, and raw ESC/POS milestone."
-              value="Development only"
-              onPress={() =>
-                navigation.navigate('BluetoothPrinterSpikeScreen')
-              }
-            />
-          )}
           <SettingRow title="Help and support" description="Report an issue with this device." value="View support" last />
         </View>
         </View>

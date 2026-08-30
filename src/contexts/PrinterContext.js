@@ -10,6 +10,7 @@ import React, {
 import { AppState } from 'react-native';
 
 import PrinterManager from '../services/printer/PrinterManager';
+import { CONNECTION_TYPES } from '../services/printer/printerTypes';
 
 export const PRINTER_STATUS = {
   NOT_CONFIGURED: 'not_configured',
@@ -18,7 +19,13 @@ export const PRINTER_STATUS = {
   DISCONNECTED: 'disconnected',
 };
 
-const HEALTH_CHECK_INTERVAL = 30000;
+const NETWORK_HEALTH_CHECK_INTERVAL = 30000;
+const BLUETOOTH_HEALTH_CHECK_INTERVAL = 90000;
+
+export const getPrinterHealthCheckInterval = connectionType =>
+  connectionType === CONNECTION_TYPES.BLUETOOTH
+    ? BLUETOOTH_HEALTH_CHECK_INTERVAL
+    : NETWORK_HEALTH_CHECK_INTERVAL;
 
 const PrinterContext = createContext(null);
 
@@ -286,7 +293,7 @@ export const PrinterProvider = ({ children }) => {
    * We DO NOT run testConnection first.
    *
    * PrinterManager.printReceipt()
-   * itself creates the fresh TCP connection.
+   * itself creates the fresh transport connection.
    * ======================================================
    */
 
@@ -308,7 +315,7 @@ export const PrinterProvider = ({ children }) => {
       }
 
       /*
-       * Fresh TCP print succeeded.
+       * Fresh transport print succeeded.
        */
       setStatus(PRINTER_STATUS.CONNECTED);
 
@@ -461,7 +468,7 @@ export const PrinterProvider = ({ children }) => {
          */
         silent: true,
       });
-    }, HEALTH_CHECK_INTERVAL);
+    }, getPrinterHealthCheckInterval(printer.connectionType));
 
     return () => {
       clearInterval(interval);

@@ -16,12 +16,19 @@ jest.mock('../src/services/printer/PrinterManager', () => ({
 import mockPrinterManager from '../src/services/printer/PrinterManager';
 
 import {
+  getPrinterHealthCheckInterval,
   PRINTER_STATUS,
   PrinterProvider,
   usePrinter,
 } from '../src/contexts/PrinterContext';
 
 const savedPrinter = {host: '192.168.1.12', port: 9100, name: 'Kitchen'};
+const savedBluetoothPrinter = {
+  connectionType: 'bluetooth',
+  deviceAddress: '00:11:22:33:44:55',
+  deviceName: 'POS-80',
+  name: 'Kitchen',
+};
 
 let latestContext;
 
@@ -67,6 +74,7 @@ describe('PrinterProvider', () => {
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    jest.useRealTimers();
   });
 
   it('loads and connects a saved printer on startup', async () => {
@@ -85,6 +93,34 @@ describe('PrinterProvider', () => {
 
     const renderer = await renderProvider();
 
+    expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
+  it('loads and connects a saved Bluetooth printer on startup', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(savedBluetoothPrinter);
+
+    const renderer = await renderProvider();
+
+    expect(latestContext.printer).toEqual(savedBluetoothPrinter);
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
+      savedBluetoothPrinter,
+    );
+
+    await unmountProvider(renderer);
+  });
+
+  it('sets disconnected when saved Bluetooth startup connection fails', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(savedBluetoothPrinter);
+    mockPrinterManager.testConnection.mockRejectedValue(
+      new Error('Bluetooth printer offline'),
+    );
+
+    const renderer = await renderProvider();
+
+    expect(latestContext.printer).toEqual(savedBluetoothPrinter);
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
 
     await unmountProvider(renderer);
@@ -113,6 +149,26 @@ describe('PrinterProvider', () => {
     });
 
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
+  it('manually retries a disconnected Bluetooth printer', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(savedBluetoothPrinter);
+    mockPrinterManager.testConnection
+      .mockRejectedValueOnce(new Error('Bluetooth printer offline'))
+      .mockResolvedValueOnce({success: true});
+
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      await latestContext.retryConnection();
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
+      savedBluetoothPrinter,
+    );
 
     await unmountProvider(renderer);
   });
@@ -181,5 +237,43 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
 
     await unmountProvider(renderer);
+  });
+
+  it('persists one Bluetooth printer and refreshes its global status', async () => {
+    mockPrinterManager.savePrinter.mockResolvedValue(savedBluetoothPrinter);
+
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      await latestContext.savePrinter(savedBluetoothPrinter);
+    });
+
+    expect(mockPrinterManager.savePrinter).toHaveBeenCalledWith(
+      savedBluetoothPrinter,
+    );
+    expect(latestContext.printer).toEqual(savedBluetoothPrinter);
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
+  it('uses the existing network interval and a longer Bluetooth interval', () => {
+    expect(getPrinterHealthCheckInterval('network')).toBe(30000);
+    expect(getPrinterHealthCheckInterval('bluetooth')).toBe(90000);
+  });
+
+  it('schedules only one Bluetooth health check per interval', async () => {
+    jest.useFakeTimers();
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+    mockPrinterManager.getPrinter.mockResolvedValue(savedBluetoothPrinter);
+
+    const renderer = await renderProvider();
+
+    expect(intervalSpy).toHaveBeenCalledTimes(1);
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 90000);
+
+    await unmountProvider(renderer);
+
+    intervalSpy.mockRestore();
   });
 });

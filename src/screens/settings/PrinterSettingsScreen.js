@@ -19,15 +19,17 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
 
 import { theme } from '../../constant';
+import BluetoothPrinterPickerModal from '../../components/printer/BluetoothPrinterPickerModal';
 import { useResponsive } from '../../contexts/ResponsiveContext';
 import { usePrinter } from '../../contexts/PrinterContext';
 
 import PrinterManager from '../../services/printer/PrinterManager';
 
 import {
+  BLUETOOTH_TYPES,
+  CONNECTION_TYPES,
   DEFAULT_PRINTER_CONFIG,
   PAPER_WIDTHS,
-  getCharactersPerLine,
 } from '../../services/printer/printerTypes';
 
 const PrinterSettingsScreen = ({ navigation }) => {
@@ -55,6 +57,8 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
   const [hasSavedPrinter, setHasSavedPrinter] = useState(false);
 
+  const [showBluetoothPicker, setShowBluetoothPicker] = useState(false);
+
   useEffect(() => {
     loadPrinter();
   }, []);
@@ -66,10 +70,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
       const saved = await PrinterManager.getPrinter();
 
       if (saved) {
-        setConfig({
-          ...DEFAULT_PRINTER_CONFIG,
-          ...saved,
-        });
+        setConfig(PrinterManager.normalizeConfig(saved));
 
         setHasSavedPrinter(true);
       }
@@ -94,17 +95,54 @@ const PrinterSettingsScreen = ({ navigation }) => {
     setConnectionStatus('not_tested');
   };
 
-  const getCurrentConfig = () => ({
-    ...config,
+  const changeConnectionType = connectionType => {
+    if (connectionType === config.connectionType) {
+      return;
+    }
 
-    host: String(config.host || '').trim(),
+    setConfig(previous => {
+      const shared = {
+        id: previous.id || DEFAULT_PRINTER_CONFIG.id,
+        name: previous.name,
+        connectionType,
+        protocol: previous.protocol || DEFAULT_PRINTER_CONFIG.protocol,
+        paperWidth: previous.paperWidth,
+        charactersPerLine: previous.charactersPerLine,
+        autoCut: previous.autoCut,
+        enabled: previous.enabled,
+      };
 
-    port: Number(config.port || 9100),
+      if (connectionType === CONNECTION_TYPES.BLUETOOTH) {
+        return {
+          ...shared,
+          bluetoothType: BLUETOOTH_TYPES.CLASSIC,
+          deviceName: '',
+          deviceAddress: '',
+        };
+      }
 
-    paperWidth: Number(config.paperWidth),
+      return {
+        ...shared,
+        host: '',
+        port: DEFAULT_PRINTER_CONFIG.port,
+      };
+    });
 
-    charactersPerLine: getCharactersPerLine(Number(config.paperWidth)),
-  });
+    setConnectionStatus('not_tested');
+  };
+
+  const handleBluetoothDeviceSelected = device => {
+    setConfig(previous => ({
+      ...previous,
+      bluetoothType: BLUETOOTH_TYPES.CLASSIC,
+      deviceName: device.deviceName,
+      deviceAddress: device.deviceAddress,
+    }));
+    setConnectionStatus('not_tested');
+    setShowBluetoothPicker(false);
+  };
+
+  const getCurrentConfig = () => PrinterManager.normalizeConfig(config);
 
   const handleTestConnection = async () => {
     try {
@@ -121,7 +159,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
       Toast.show({
         type: 'success',
         text1: 'Printer connected',
-        text2: 'The printer is reachable on the network.',
+        text2: 'The selected printer connection is ready.',
         position: 'top',
         topOffset: successToastOffset,
         props: { isTablet },
@@ -178,8 +216,8 @@ const PrinterSettingsScreen = ({ navigation }) => {
 
       const current = getCurrentConfig();
 
-      await savePrinter(current);
-      setConfig(current);
+      const saved = await savePrinter(current);
+      setConfig(saved);
 
       setHasSavedPrinter(true);
 
@@ -291,7 +329,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
         <View>
           <Text style={styles.headerTitle}>Printer Settings</Text>
 
-          <Text style={styles.headerSubtitle}>Network ESC/POS</Text>
+          <Text style={styles.headerSubtitle}>ESC/POS printer</Text>
         </View>
       </View>
 
@@ -300,11 +338,59 @@ const PrinterSettingsScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
+          <Text style={styles.label}>CONNECTION TYPE</Text>
+
+          <View style={styles.connectionTypeRow}>
+            <TouchableOpacity
+              disabled={Boolean(action)}
+              onPress={() => changeConnectionType(CONNECTION_TYPES.NETWORK)}
+              style={[
+                styles.connectionTypeButton,
+                config.connectionType === CONNECTION_TYPES.NETWORK &&
+                  styles.connectionTypeButtonActive,
+              ]}
+            >
+              <Ionicons
+                name="wifi-outline"
+                size={18}
+                color={theme.colors.textPrimary}
+              />
+              <Text style={styles.connectionTypeText}>Wi-Fi / LAN</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={Boolean(action)}
+              onPress={() => changeConnectionType(CONNECTION_TYPES.BLUETOOTH)}
+              style={[
+                styles.connectionTypeButton,
+                config.connectionType === CONNECTION_TYPES.BLUETOOTH &&
+                  styles.connectionTypeButtonActive,
+              ]}
+            >
+              <Ionicons
+                name="bluetooth-outline"
+                size={18}
+                color={theme.colors.textPrimary}
+              />
+              <Text style={styles.connectionTypeText}>Bluetooth</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.divider} />
+
           <View style={styles.cardHeader}>
             <View>
-              <Text style={styles.cardTitle}>Network Printer</Text>
+              <Text style={styles.cardTitle}>
+                {config.connectionType === CONNECTION_TYPES.BLUETOOTH
+                  ? 'Bluetooth Printer'
+                  : 'Network Printer'}
+              </Text>
 
-              <Text style={styles.cardSubtitle}>Wi-Fi or Ethernet</Text>
+              <Text style={styles.cardSubtitle}>
+                {config.connectionType === CONNECTION_TYPES.BLUETOOTH
+                  ? 'Bluetooth Classic'
+                  : 'Wi-Fi or Ethernet'}
+              </Text>
             </View>
 
             {renderStatus()}
@@ -322,30 +408,73 @@ const PrinterSettingsScreen = ({ navigation }) => {
             style={styles.input}
           />
 
-          <Text style={styles.label}>IP ADDRESS</Text>
+          {config.connectionType === CONNECTION_TYPES.NETWORK ? (
+            <>
+              <Text style={styles.label}>IP ADDRESS</Text>
 
-          <TextInput
-            value={config.host}
-            onChangeText={value => updateConfig('host', value)}
-            placeholder="192.168.1.105"
-            placeholderTextColor={theme.colors.textSecondary}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.input}
-          />
+              <TextInput
+                value={config.host || ''}
+                onChangeText={value => updateConfig('host', value)}
+                placeholder="192.168.1.105"
+                placeholderTextColor={theme.colors.textSecondary}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.input}
+              />
 
-          <Text style={styles.label}>PORT</Text>
+              <Text style={styles.label}>PORT</Text>
 
-          <TextInput
-            value={String(config.port)}
-            onChangeText={value =>
-              updateConfig('port', value.replace(/\D/g, ''))
-            }
-            placeholder="9100"
-            keyboardType="number-pad"
-            style={styles.input}
-          />
+              <TextInput
+                value={String(config.port ?? '')}
+                onChangeText={value =>
+                  updateConfig('port', value.replace(/\D/g, ''))
+                }
+                placeholder="9100"
+                keyboardType="number-pad"
+                style={styles.input}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.label}>SELECTED BLUETOOTH DEVICE</Text>
+
+              {config.deviceAddress ? (
+                <View style={styles.selectedDeviceCard}>
+                  <View style={styles.selectedDeviceCopy}>
+                    <Text style={styles.selectedDeviceName} numberOfLines={1}>
+                      {config.deviceName || 'Bluetooth Printer'}
+                    </Text>
+                    <Text style={styles.selectedDeviceAddress}>
+                      {config.deviceAddress}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    disabled={Boolean(action)}
+                    onPress={() => setShowBluetoothPicker(true)}
+                    style={styles.changeDeviceButton}
+                  >
+                    <Text style={styles.changeDeviceText}>Change Printer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  disabled={Boolean(action)}
+                  onPress={() => setShowBluetoothPicker(true)}
+                  style={styles.chooseDeviceButton}
+                >
+                  <Ionicons
+                    name="bluetooth-outline"
+                    size={19}
+                    color={theme.colors.textPrimary}
+                  />
+                  <Text style={styles.secondaryButtonText}>
+                    Choose Bluetooth Printer
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
 
           <Text style={styles.label}>PAPER WIDTH</Text>
 
@@ -429,9 +558,9 @@ const PrinterSettingsScreen = ({ navigation }) => {
             />
 
             <Text style={styles.infoText}>
-              The tablet and printer must be reachable on the same local
-              network. Enter the IP shown on the printer network configuration
-              page.
+              {config.connectionType === CONNECTION_TYPES.BLUETOOTH
+                ? 'The printer must remain paired in Android. Workfood saves only its name and Bluetooth address and reconnects for each print.'
+                : 'The tablet and printer must be reachable on the same local network. Enter the IP shown on the printer network configuration page.'}
             </Text>
           </View>
 
@@ -445,7 +574,11 @@ const PrinterSettingsScreen = ({ navigation }) => {
             ) : (
               <>
                 <Ionicons
-                  name="wifi-outline"
+                  name={
+                    config.connectionType === CONNECTION_TYPES.BLUETOOTH
+                      ? 'bluetooth-outline'
+                      : 'wifi-outline'
+                  }
                   size={18}
                   color={theme.colors.textPrimary}
                 />
@@ -498,6 +631,12 @@ const PrinterSettingsScreen = ({ navigation }) => {
           )}
         </View>
       </ScrollView>
+
+      <BluetoothPrinterPickerModal
+        visible={showBluetoothPicker}
+        onClose={() => setShowBluetoothPicker(false)}
+        onSelect={handleBluetoothDeviceSelected}
+      />
     </SafeAreaView>
   );
 };
@@ -581,6 +720,35 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.border,
   },
 
+  connectionTypeRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+
+  connectionTypeButton: {
+    flex: 1,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+
+  connectionTypeButtonActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight,
+  },
+
+  connectionTypeText: {
+    color: theme.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
   label: {
     marginBottom: 7,
     color: theme.colors.textSecondary,
@@ -598,6 +766,61 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.xl,
     color: theme.colors.textPrimary,
     fontSize: 14,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+
+  selectedDeviceCard: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+
+  selectedDeviceCopy: { flex: 1, paddingRight: theme.spacing.md },
+
+  selectedDeviceName: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  selectedDeviceAddress: {
+    marginTop: 4,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+  },
+
+  changeDeviceButton: {
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.surface,
+  },
+
+  changeDeviceText: {
+    color: theme.colors.textPrimary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  chooseDeviceButton: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.xl,
     backgroundColor: theme.colors.surfaceSecondary,
   },
 

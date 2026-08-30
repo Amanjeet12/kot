@@ -6,6 +6,11 @@ jest.mock('react-native-tcp-socket', () => ({
   createConnection: jest.fn(),
 }));
 
+jest.mock('../src/services/printer/transports/BluetoothTransport', () => ({
+  __esModule: true,
+  default: {send: jest.fn(), test: jest.fn()},
+}));
+
 jest.mock('../src/services/printer/printerStorage', () => ({
   getPrinterConfig: jest.fn(),
   removePrinterConfig: jest.fn(),

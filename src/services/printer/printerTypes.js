@@ -1,5 +1,10 @@
 export const CONNECTION_TYPES = {
   NETWORK: 'network',
+  BLUETOOTH: 'bluetooth',
+};
+
+export const BLUETOOTH_TYPES = {
+  CLASSIC: 'classic',
 };
 
 export const PRINTER_PROTOCOLS = {
