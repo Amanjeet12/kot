@@ -2,9 +2,10 @@ package com.workfood_kot.usb
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
-class UsbPrinterSpikeModuleTest {
+class UsbPrinterModuleTest {
   @Test
   fun `claimed resource is released and closed after success`() {
     val events = mutableListOf<String>()
@@ -80,7 +81,7 @@ class UsbPrinterSpikeModuleTest {
           release = { _, _ -> events += "release" },
           close = { events += "close" },
       )
-    } catch (error: UsbSpikeException) {
+    } catch (error: UsbPrinterException) {
       assertEquals("USB_CLAIM_FAILED", error.errorCode)
     }
 
@@ -105,6 +106,50 @@ class UsbPrinterSpikeModuleTest {
   }
 
   @Test
+  fun `multiple full chunks advance sequentially`() {
+    val offsets = mutableListOf<Int>()
+    val requested = mutableListOf<Int>()
+
+    val transfers =
+        writeSequentialChunks(totalBytes = 10, chunkSize = 4) { offset, request ->
+          offsets += offset
+          requested += request
+          request
+        }
+
+    assertEquals(listOf(0, 4, 8), offsets)
+    assertEquals(listOf(4, 4, 2), requested)
+    assertEquals(3, transfers)
+  }
+
+  @Test
+  fun `zero byte receipt is rejected before transfer`() {
+    var transferCalled = false
+
+    try {
+      writeSequentialChunks(totalBytes = 0, chunkSize = 64) { _, _ ->
+        transferCalled = true
+        0
+      }
+      fail("Expected USB_DATA_EMPTY")
+    } catch (error: UsbPrinterException) {
+      assertEquals("USB_DATA_EMPTY", error.errorCode)
+    }
+
+    assertEquals(false, transferCalled)
+  }
+
+  @Test
+  fun `invalid chunk size is rejected before transfer`() {
+    try {
+      writeSequentialChunks(totalBytes = 10, chunkSize = 0) { _, _ -> 0 }
+      fail("Expected USB_INVALID_PACKET_SIZE")
+    } catch (error: UsbPrinterException) {
+      assertEquals("USB_INVALID_PACKET_SIZE", error.errorCode)
+    }
+  }
+
+  @Test
   fun `failed later chunk does not restart from offset zero`() {
     val offsets = mutableListOf<Int>()
 
@@ -113,7 +158,7 @@ class UsbPrinterSpikeModuleTest {
         offsets += offset
         if (offset >= 4) -1 else request
       }
-    } catch (error: UsbSpikeException) {
+    } catch (error: UsbPrinterException) {
       assertEquals("USB_WRITE_FAILED", error.errorCode)
       assertTrue(error.message!!.contains("after 4 of 10 bytes"))
     }

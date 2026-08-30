@@ -6,23 +6,23 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
 
-class UsbPrinterSpikePackage : BaseReactPackage() {
+class UsbPrinterPackage : BaseReactPackage() {
   override fun getModule(
       name: String,
       reactContext: ReactApplicationContext,
   ): NativeModule? =
-      if (name == UsbPrinterSpikeModule.NAME) {
-        UsbPrinterSpikeModule(reactContext)
+      if (name == UsbPrinterModule.NAME) {
+        UsbPrinterModule(reactContext)
       } else {
         null
       }
 
   override fun getReactModuleInfoProvider(): ReactModuleInfoProvider = ReactModuleInfoProvider {
     mapOf(
-        UsbPrinterSpikeModule.NAME to
+        UsbPrinterModule.NAME to
             ReactModuleInfo(
-                name = UsbPrinterSpikeModule.NAME,
-                className = UsbPrinterSpikeModule::class.java.name,
+                name = UsbPrinterModule.NAME,
+                className = UsbPrinterModule::class.java.name,
                 canOverrideExistingModule = false,
                 needsEagerInit = false,
                 isCxxModule = false,

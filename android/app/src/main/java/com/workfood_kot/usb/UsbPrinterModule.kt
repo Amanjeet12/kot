@@ -22,10 +22,11 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.Executors
 import kotlin.math.min
 
-internal class UsbSpikeException(
+internal class UsbPrinterException(
     val errorCode: String,
     message: String,
 ) : Exception(message)
@@ -40,7 +41,7 @@ internal inline fun <Connection, Resource, Result> withClaimedUsbResource(
 ): Result {
   val connection =
       open()
-          ?: throw UsbSpikeException(
+          ?: throw UsbPrinterException(
               "USB_OPEN_FAILED",
               "Android could not open the selected USB device.",
           )
@@ -49,7 +50,7 @@ internal inline fun <Connection, Resource, Result> withClaimedUsbResource(
   try {
     claimed = claim(connection, resource)
     if (!claimed) {
-      throw UsbSpikeException(
+      throw UsbPrinterException(
           "USB_CLAIM_FAILED",
           "Android could not claim the selected USB interface.",
       )
@@ -73,10 +74,10 @@ internal fun writeSequentialChunks(
     transfer: (offset: Int, requestedBytes: Int) -> Int,
 ): Int {
   if (totalBytes <= 0) {
-    throw UsbSpikeException("USB_DATA_EMPTY", "USB printer data is empty.")
+    throw UsbPrinterException("USB_DATA_EMPTY", "USB printer data is empty.")
   }
   if (chunkSize <= 0) {
-    throw UsbSpikeException("USB_INVALID_PACKET_SIZE", "USB write chunk size is invalid.")
+    throw UsbPrinterException("USB_INVALID_PACKET_SIZE", "USB write chunk size is invalid.")
   }
 
   var offset = 0
@@ -87,7 +88,7 @@ internal fun writeSequentialChunks(
     val transferredBytes = transfer(offset, requestedBytes)
 
     if (transferredBytes <= 0 || transferredBytes > requestedBytes) {
-      throw UsbSpikeException(
+      throw UsbPrinterException(
           "USB_WRITE_FAILED",
           "USB transfer failed after $offset of $totalBytes bytes. The receipt was not retried.",
       )
@@ -100,8 +101,8 @@ internal fun writeSequentialChunks(
   return transfers
 }
 
-@ReactModule(name = UsbPrinterSpikeModule.NAME)
-class UsbPrinterSpikeModule(
+@ReactModule(name = UsbPrinterModule.NAME)
+class UsbPrinterModule(
     reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
   private data class WritablePath(
@@ -116,8 +117,38 @@ class UsbPrinterSpikeModule(
   private val permissionLock = Any()
   private var permissionReceiver: BroadcastReceiver? = null
   private var permissionPromise: Promise? = null
+  private var eventReceiverRegistered = false
+
+  private val usbEventReceiver =
+      object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+          val device = intent.usbDeviceExtra() ?: return
+          val eventName =
+              when (intent.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> EVENT_DEVICE_ATTACHED
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> EVENT_DEVICE_DETACHED
+                else -> return
+              }
+
+          emitDeviceEvent(eventName, deviceToMap(device))
+        }
+      }
+
+  init {
+    registerUsbEventReceiver()
+  }
 
   override fun getName(): String = NAME
+
+  @ReactMethod
+  fun addListener(eventName: String) {
+    // Required by React Native's NativeEventEmitter contract.
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Double) {
+    // Required by React Native's NativeEventEmitter contract.
+  }
 
   @ReactMethod
   fun isUsbHostSupported(promise: Promise) {
@@ -176,7 +207,7 @@ class UsbPrinterSpikeModule(
         return
       }
 
-      val action = "${reactApplicationContext.packageName}.USB_PRINTER_SPIKE_PERMISSION"
+      val action = "${reactApplicationContext.packageName}.USB_PRINTER_PERMISSION"
       val receiver =
           object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -244,14 +275,14 @@ class UsbPrinterSpikeModule(
   }
 
   @ReactMethod
-  fun printBase64(deviceName: String, base64Data: String, promise: Promise) {
+  fun writeBase64(deviceName: String, base64Data: String, promise: Promise) {
     worker.execute {
       try {
         val data =
             try {
               Base64.decode(base64Data, Base64.DEFAULT)
             } catch (error: IllegalArgumentException) {
-              throw UsbSpikeException("USB_DATA_INVALID", "USB printer data is not valid Base64.")
+              throw UsbPrinterException("USB_DATA_INVALID", "USB printer data is not valid Base64.")
             }
         val device = requirePermittedDevice(deviceName)
         val path = findWritablePath(device)
@@ -277,7 +308,7 @@ class UsbPrinterSpikeModule(
                 path,
                 data.size,
                 transferCount,
-                "USB ESC/POS test sent once.",
+                "Receipt sent to USB printer.",
             )
         )
       } catch (error: Exception) {
@@ -290,19 +321,20 @@ class UsbPrinterSpikeModule(
     synchronized(permissionLock) {
       permissionPromise?.reject(
           "USB_MODULE_INVALIDATED",
-          "USB permission request was cancelled because the development module stopped.",
+          "USB permission request was cancelled because the USB module stopped.",
       )
       permissionPromise = null
       permissionReceiver?.let(::unregisterPermissionReceiver)
       permissionReceiver = null
     }
+    unregisterUsbEventReceiver()
     worker.shutdownNow()
     super.invalidate()
   }
 
   private fun requireDevice(deviceName: String): UsbDevice =
       usbManager.deviceList[deviceName]
-          ?: throw UsbSpikeException(
+          ?: throw UsbPrinterException(
               "USB_DEVICE_NOT_FOUND",
               "The selected USB device is no longer connected.",
           )
@@ -310,7 +342,7 @@ class UsbPrinterSpikeModule(
   private fun requirePermittedDevice(deviceName: String): UsbDevice {
     val device = requireDevice(deviceName)
     if (!usbManager.hasPermission(device)) {
-      throw UsbSpikeException(
+      throw UsbPrinterException(
           "USB_PERMISSION_REQUIRED",
           "USB permission is required for the selected device.",
       )
@@ -345,7 +377,7 @@ class UsbPrinterSpikeModule(
   private fun findWritablePath(device: UsbDevice): WritablePath {
     val classification = classify(device)
     if (classification == "usb_serial") {
-      throw UsbSpikeException(
+      throw UsbPrinterException(
           "USB_SERIAL_DRIVER_REQUIRED",
           "This device appears to be USB serial. Its chipset must be identified and configured before printing.",
       )
@@ -373,7 +405,7 @@ class UsbPrinterSpikeModule(
       }
     }
 
-    throw UsbSpikeException(
+    throw UsbPrinterException(
         "USB_WRITABLE_ENDPOINT_NOT_FOUND",
         "No supported BULK OUT endpoint was found on the selected USB device.",
     )
@@ -418,6 +450,7 @@ class UsbPrinterSpikeModule(
         putInt("deviceProtocol", device.deviceProtocol)
         putString("manufacturerName", safeDescriptor { device.manufacturerName })
         putString("productName", safeDescriptor { device.productName })
+        putString("serialNumber", safeDescriptor { device.serialNumber })
         putString("version", safeDescriptor { device.version })
         putBoolean("hasPermission", usbManager.hasPermission(device))
         putString("classification", classify(device))
@@ -505,6 +538,53 @@ class UsbPrinterSpikeModule(
     }
   }
 
+  private fun registerUsbEventReceiver() {
+    if (eventReceiverRegistered) {
+      return
+    }
+
+    val filter =
+        IntentFilter().apply {
+          addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+          addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      reactApplicationContext.registerReceiver(
+          usbEventReceiver,
+          filter,
+          Context.RECEIVER_EXPORTED,
+      )
+    } else {
+      @Suppress("DEPRECATION") reactApplicationContext.registerReceiver(usbEventReceiver, filter)
+    }
+    eventReceiverRegistered = true
+  }
+
+  private fun unregisterUsbEventReceiver() {
+    if (!eventReceiverRegistered) {
+      return
+    }
+
+    try {
+      reactApplicationContext.unregisterReceiver(usbEventReceiver)
+    } catch (_: IllegalArgumentException) {
+      // Already unregistered during teardown.
+    } finally {
+      eventReceiverRegistered = false
+    }
+  }
+
+  private fun emitDeviceEvent(eventName: String, device: WritableMap) {
+    if (!reactApplicationContext.hasActiveReactInstance()) {
+      return
+    }
+
+    reactApplicationContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit(eventName, device)
+  }
+
   private fun unregisterPermissionReceiver(receiver: BroadcastReceiver) {
     try {
       reactApplicationContext.unregisterReceiver(receiver)
@@ -540,7 +620,7 @@ class UsbPrinterSpikeModule(
       }
 
   private fun reject(promise: Promise, error: Exception, fallbackCode: String) {
-    if (error is UsbSpikeException) {
+    if (error is UsbPrinterException) {
       promise.reject(error.errorCode, error.message, error)
     } else {
       promise.reject(fallbackCode, error.message ?: fallbackCode, error)
@@ -548,7 +628,9 @@ class UsbPrinterSpikeModule(
   }
 
   companion object {
-    const val NAME = "UsbPrinterSpike"
+    const val NAME = "UsbPrinter"
+    const val EVENT_DEVICE_ATTACHED = "UsbPrinterDeviceAttached"
+    const val EVENT_DEVICE_DETACHED = "UsbPrinterDeviceDetached"
     private const val DEFAULT_WRITE_CHUNK_SIZE = 16 * 1024
     private const val WRITE_TIMEOUT_MS = 5_000
     private val COMMON_SERIAL_VENDOR_IDS =
