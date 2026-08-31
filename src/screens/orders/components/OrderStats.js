@@ -14,9 +14,6 @@ const StatCard = ({ label, value, icon, type = 'yellow', isTablet }) => {
       case 'success':
         return styles.successIcon;
 
-      case 'blue':
-        return styles.blueIcon;
-
       default:
         return styles.yellowIcon;
     }
@@ -26,9 +23,6 @@ const StatCard = ({ label, value, icon, type = 'yellow', isTablet }) => {
     switch (type) {
       case 'success':
         return theme.colors.success;
-
-      case 'blue':
-        return theme.colors.info;
 
       default:
         return theme.colors.textSecondary;
@@ -40,7 +34,7 @@ const StatCard = ({ label, value, icon, type = 'yellow', isTablet }) => {
       style={[
         styles.card,
         {
-          width: isTablet ? '24%' : '48%',
+          width: isTablet ? '32%' : '48%',
         },
       ]}
     >
@@ -76,10 +70,6 @@ const OrderStats = ({ orders = [] }) => {
     order => order.status === 'confirmed',
   ).length;
 
-  const preparingCount = orders.filter(
-    order => order.status === 'preparing',
-  ).length;
-
   const readyCount = orders.filter(order => order.status === 'ready').length;
 
   return (
@@ -95,14 +85,6 @@ const OrderStats = ({ orders = [] }) => {
         label="WAITING"
         value={waitingCount}
         icon="time-outline"
-        isTablet={isTablet}
-      />
-
-      <StatCard
-        label="IN PREPARATION"
-        value={preparingCount}
-        icon="restaurant-outline"
-        type="blue"
         isTablet={isTablet}
       />
 
@@ -166,10 +148,6 @@ const styles = StyleSheet.create({
 
   yellowIcon: {
     backgroundColor: theme.colors.primaryLight,
-  },
-
-  blueIcon: {
-    backgroundColor: '#E8EFFC',
   },
 
   successIcon: {

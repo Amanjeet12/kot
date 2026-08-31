@@ -215,8 +215,6 @@ const OrdersScreen = ({ navigation }) => {
 
       confirmed: orders.filter(order => order.status === 'confirmed').length,
 
-      preparing: orders.filter(order => order.status === 'preparing').length,
-
       ready: orders.filter(order => order.status === 'ready').length,
     };
   }, [orders]);
@@ -247,30 +245,6 @@ const OrdersScreen = ({ navigation }) => {
       return statusMatches && searchMatches;
     });
   }, [orders, search, selectedStatus]);
-
-  /*
-  |--------------------------------------------------------------------------
-  | ACTIONS
-  |--------------------------------------------------------------------------
-  */
-
-  const handleStartPreparation = order => {
-    console.log('Start preparation:', order.id);
-
-    /*
-     * Mutation route will
-     * be added here.
-     */
-  };
-
-  const handleCancelOrder = order => {
-    console.log('Cancel order:', order.id);
-
-    /*
-     * Cancel mutation route
-     * will be added here.
-     */
-  };
 
   /*
   |--------------------------------------------------------------------------

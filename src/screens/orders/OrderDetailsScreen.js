@@ -22,6 +22,15 @@ import { useResponsive } from '../../contexts/ResponsiveContext';
 import { theme } from '../../constant';
 
 import { usePrinter } from '../../contexts/PrinterContext';
+
+import {
+  canChangeOrderStatus,
+  normalizeOrderStatus,
+} from '../../constant/orderStatus';
+
+import { useUpdateOrderStatus } from '../../hooks/mutations/useUpdateOrderStatus';
+
+import OrderStatusConfirmModal from './components/OrderStatusConfirmModal';
 /*
  * =========================================================
  * HELPERS
@@ -116,6 +125,14 @@ const OrderDetailsScreen = ({ route, navigation }) => {
 
   const isHistory = Boolean(route?.params?.isHistory);
 
+  const [currentStatus, setCurrentStatus] = useState(() =>
+    normalizeOrderStatus(order.status),
+  );
+
+  const [nextStatus, setNextStatus] = useState(null);
+
+  const updateStatusMutation = useUpdateOrderStatus();
+
   const items = Array.isArray(order?.items) ? order.items : [];
 
   /*
@@ -124,14 +141,65 @@ const OrderDetailsScreen = ({ route, navigation }) => {
    * =======================================================
    */
 
-  const isPreparing = String(order.status || '').toLowerCase() === 'preparing';
+  const normalizedStatus = currentStatus;
 
-  const normalizedStatus = String(order.status || '').toLowerCase();
+  const isConfirmed = normalizedStatus === 'confirmed';
+
+  const isReady = normalizedStatus === 'ready';
 
   const historyStatus =
     normalizedStatus === 'delivered'
       ? 'Completed'
       : normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+
+  const activeStatus = isReady
+    ? 'Ready'
+    : `Confirmed · Queue #${order.rank || 1}`;
+
+  const handleRequestStatusChange = status => {
+    if (!canChangeOrderStatus(normalizedStatus, status)) {
+      console.warn(
+        `Invalid status transition: ${normalizedStatus} -> ${status}`,
+      );
+
+      return;
+    }
+
+    setNextStatus(status);
+  };
+
+  const closeStatusDialog = () => {
+    if (!updateStatusMutation.isPending) {
+      setNextStatus(null);
+    }
+  };
+
+  const confirmStatusChange = async () => {
+    if (!nextStatus) {
+      return;
+    }
+
+    const status = nextStatus;
+
+    try {
+      await updateStatusMutation.mutateAsync({
+        tuckShopOrderId: order.tuckShopOrderId || order.id,
+        status,
+      });
+
+      setCurrentStatus(status);
+      setNextStatus(null);
+
+      if (status === 'delivered' || status === 'cancelled') {
+        navigation.goBack();
+      }
+    } catch (error) {
+      console.log(
+        'Status update error:',
+        error?.response?.data || error?.message,
+      );
+    }
+  };
 
   /*
    * =======================================================
@@ -299,7 +367,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
             <Text allowFontScaling={false} style={styles.orderMeta}>
               KOT #{order.id}
               {' · '}
-              {order.status === 'confirmed' ? 'Confirmed' : 'Preparing'}
+              {isHistory ? historyStatus : isReady ? 'Ready' : 'Confirmed'}
               {' · '}
               {order.orderTime}
             </Text>
@@ -382,7 +450,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
           style={[
             styles.statusPill,
 
-            isPreparing && styles.preparingPill,
+            isReady && styles.readyPill,
 
             isHistory &&
               normalizedStatus !== 'cancelled' &&
@@ -398,7 +466,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
             style={[
               styles.statusPillText,
 
-              isPreparing && styles.preparingPillText,
+              isReady && styles.readyPillText,
 
               isHistory &&
                 normalizedStatus !== 'cancelled' &&
@@ -409,11 +477,7 @@ const OrderDetailsScreen = ({ route, navigation }) => {
                 styles.cancelledPillText,
             ]}
           >
-            {isHistory
-              ? historyStatus
-              : isPreparing
-              ? 'Preparing'
-              : `Confirmed · Queue #${order.rank || 1}`}
+            {isHistory ? historyStatus : activeStatus}
           </Text>
         </View>
 
@@ -458,33 +522,39 @@ const OrderDetailsScreen = ({ route, navigation }) => {
 
         {!isHistory && (
           <View style={styles.actions}>
-            {!isPreparing ? (
+            {isConfirmed ? (
               <>
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={styles.startButton}
+                  onPress={() => handleRequestStatusChange('ready')}
                 >
                   <Text allowFontScaling={false} style={styles.startButtonText}>
-                    Start preparation
+                    Mark as ready
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={styles.cancelButton}
+                  onPress={() => handleRequestStatusChange('cancelled')}
                 >
                   <Text allowFontScaling={false} style={styles.cancelText}>
                     Cancel
                   </Text>
                 </TouchableOpacity>
               </>
-            ) : (
-              <View style={styles.lockedButton}>
-                <Text allowFontScaling={false} style={styles.lockedText}>
-                  Preparation in progress
+            ) : isReady ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.startButton}
+                onPress={() => handleRequestStatusChange('delivered')}
+              >
+                <Text allowFontScaling={false} style={styles.startButtonText}>
+                  Mark as delivered
                 </Text>
-              </View>
-            )}
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 
@@ -578,6 +648,15 @@ const OrderDetailsScreen = ({ route, navigation }) => {
           {renderSideCard()}
         </ScrollView>
       )}
+
+      <OrderStatusConfirmModal
+        visible={Boolean(nextStatus)}
+        order={{ ...order, status: normalizedStatus }}
+        nextStatus={nextStatus}
+        loading={updateStatusMutation.isPending}
+        onClose={closeStatusDialog}
+        onConfirm={confirmStatusChange}
+      />
     </SafeAreaView>
   );
 };
@@ -904,8 +983,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primaryLight,
   },
 
-  preparingPill: {
-    backgroundColor: '#E8EFFC',
+  readyPill: {
+    backgroundColor: '#E7F7F0',
   },
 
   statusPillText: {
@@ -916,8 +995,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  preparingPillText: {
-    color: theme.colors.info,
+  readyPillText: {
+    color: theme.colors.success,
   },
 
   completedPill: {
@@ -1088,27 +1167,4 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
 
-  lockedButton: {
-    flex: 1,
-
-    height: 54,
-
-    justifyContent: 'center',
-
-    alignItems: 'center',
-
-    borderRadius: theme.radius.xl,
-
-    backgroundColor: theme.colors.surfaceSecondary,
-  },
-
-  lockedText: {
-    color: theme.colors.textSecondary,
-
-    fontSize: 11,
-
-    fontWeight: '700',
-
-    textAlign: 'center',
-  },
 });

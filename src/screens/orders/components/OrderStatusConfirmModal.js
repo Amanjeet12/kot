@@ -15,27 +15,6 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { theme } from '../../../constant';
 
 const STATUS_DIALOG_CONFIG = {
-  preparing: {
-    icon: 'restaurant-outline',
-
-    title: 'Start preparation?',
-
-    description:
-      'This moves the order into preparation. Once preparation starts, this order can no longer be cancelled.',
-
-    confirmText: 'Yes, start preparation',
-
-    iconColor: theme.colors.textPrimary,
-
-    iconBackground: theme.colors.primaryLight,
-
-    confirmBackground: theme.colors.primary,
-
-    confirmColor: theme.colors.textPrimary,
-
-    dangerous: false,
-  },
-
   cancelled: {
     icon: 'alert-circle-outline',
 

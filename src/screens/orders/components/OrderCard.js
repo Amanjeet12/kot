@@ -71,8 +71,6 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
 
   const isConfirmed = status === 'confirmed';
 
-  const isPreparing = status === 'preparing';
-
   const isReady = status === 'ready';
 
   /*
@@ -115,13 +113,6 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
           label: 'Confirmed',
           background: theme.colors.primaryLight,
           color: '#8A6A00',
-        };
-
-      case 'preparing':
-        return {
-          label: 'Preparing',
-          background: '#E8EFFC',
-          color: theme.colors.info,
         };
 
       case 'ready':
@@ -333,10 +324,16 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.primaryButton}
-              onPress={() => onChangeStatus?.('preparing')}
+              onPress={() => onChangeStatus?.('ready')}
             >
+              <Ionicons
+                name="checkmark-outline"
+                size={15}
+                color={theme.colors.textPrimary}
+              />
+
               <Text allowFontScaling={false} style={styles.primaryButtonText}>
-                Start preparation
+                Mark as ready
               </Text>
             </TouchableOpacity>
 
@@ -347,33 +344,6 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
             >
               <Text allowFontScaling={false} style={styles.cancelButtonText}>
                 Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ================================================= */}
-        {/* PREPARING */}
-        {/* ================================================= */}
-
-        {isPreparing && (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.primaryButton}
-              onPress={() => onChangeStatus?.('ready')}
-            >
-              <Ionicons
-                name="checkmark-outline"
-                size={15}
-                color={theme.colors.textPrimary}
-              />
-
-              <Text
-                allowFontScaling={false}
-                style={[styles.primaryButtonText, styles.buttonTextWithIcon]}
-              >
-                Mark as ready
               </Text>
             </TouchableOpacity>
           </View>
@@ -857,15 +827,13 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonText: {
+    marginLeft: 4,
+
     color: theme.colors.textOnPrimary,
 
     fontSize: 9,
 
     fontWeight: '800',
-  },
-
-  buttonTextWithIcon: {
-    marginLeft: 4,
   },
 
   /*

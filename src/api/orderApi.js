@@ -116,7 +116,7 @@ export const getOrderHistory = async ({
 | /backend/kot/tuck_shop_order/:id/status
 |
 | {
-|   status: 'preparing'
+|   status: 'ready'
 | }
 |
 */

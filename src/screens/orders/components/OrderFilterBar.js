@@ -25,10 +25,6 @@ const FILTERS = [
     label: 'Confirmed',
   },
   {
-    key: 'preparing',
-    label: 'Preparing',
-  },
-  {
     key: 'ready',
     label: 'Ready',
   },

@@ -1,3 +1,5 @@
+import { normalizeOrderStatus } from '../constant/orderStatus';
+
 const formatOrderTime = value => {
   if (!value) {
     return '';
@@ -91,7 +93,7 @@ export const mapTuckShopOrder = (order, rank = null) => {
 
     rank,
 
-    status: order.status,
+    status: normalizeOrderStatus(order.status),
 
     customerName: order.customer?.name || 'Customer',
 

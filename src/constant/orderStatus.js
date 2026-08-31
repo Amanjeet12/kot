@@ -3,8 +3,6 @@ export const ORDER_STATUS = {
 
   CONFIRMED: 'confirmed',
 
-  PREPARING: 'preparing',
-
   READY: 'ready',
 
   DELIVERED: 'delivered',
@@ -23,9 +21,7 @@ export const ORDER_STATUS = {
 export const ORDER_STATUS_TRANSITIONS = {
   pending: [],
 
-  confirmed: ['preparing', 'cancelled'],
-
-  preparing: ['ready'],
+  confirmed: ['ready', 'cancelled'],
 
   ready: ['delivered'],
 
@@ -38,4 +34,13 @@ export const ORDER_STATUS_TRANSITIONS = {
 
 export const canChangeOrderStatus = (currentStatus, nextStatus) => {
   return (ORDER_STATUS_TRANSITIONS[currentStatus] || []).includes(nextStatus);
+};
+
+export const normalizeOrderStatus = status => {
+  const normalizedStatus = String(status || '').toLowerCase().trim();
+
+  // Orders left in the retired intermediate state behave as ready orders.
+  return normalizedStatus === 'preparing'
+    ? ORDER_STATUS.READY
+    : normalizedStatus;
 };
