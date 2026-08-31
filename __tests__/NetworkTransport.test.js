@@ -45,7 +45,7 @@ describe('NetworkTransport.send', () => {
     jest.useRealTimers();
   });
 
-  it('resolves only after the socket confirms the write', async () => {
+  it('resolves only after the write and graceful socket close complete', async () => {
     const resultPromise = NetworkTransport.send(
       {host: '192.168.1.12', port: 9100},
       Buffer.from('receipt'),
@@ -53,14 +53,25 @@ describe('NetworkTransport.send', () => {
 
     connectCallback();
 
+    let resolved = false;
+    resultPromise.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+
+    expect(resolved).toBe(false);
+    expect(mockSocket.end).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).not.toHaveBeenCalled();
+
+    mockSocketHandlers.close(false);
+
     await expect(resultPromise).resolves.toMatchObject({success: true});
     expect(mockSocket.write).toHaveBeenCalledWith(
       expect.any(Buffer),
       undefined,
       expect.any(Function),
     );
-    expect(mockSocket.end).toHaveBeenCalledTimes(1);
-    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).not.toHaveBeenCalled();
   });
 
   it('rejects a write error and destroys the socket', async () => {
@@ -106,6 +117,38 @@ describe('NetworkTransport.send', () => {
     await expect(resultPromise).rejects.toThrow('timed out');
     expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
   });
+
+  it('finishes connection-test cleanup before the first print starts', async () => {
+    const testPromise = NetworkTransport.test({
+      host: '192.168.1.12',
+      port: 9100,
+    });
+
+    connectCallback();
+    expect(mockSocket.end).toHaveBeenCalledTimes(1);
+    expect(mockSocket.write).not.toHaveBeenCalled();
+
+    let testResolved = false;
+    testPromise.then(() => {
+      testResolved = true;
+    });
+    await Promise.resolve();
+    expect(testResolved).toBe(false);
+
+    mockSocketHandlers.close(false);
+    await testPromise;
+
+    const printPromise = NetworkTransport.send(
+      {host: '192.168.1.12', port: 9100},
+      Buffer.from('test receipt'),
+    );
+    connectCallback();
+    mockSocketHandlers.close(false);
+
+    await expect(printPromise).resolves.toMatchObject({success: true});
+    expect(mockSocket.write).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).not.toHaveBeenCalled();
+  });
 });
 
 describe('NetworkTransport.test', () => {
@@ -117,7 +160,7 @@ describe('NetworkTransport.test', () => {
     jest.useRealTimers();
   });
 
-  it('opens a connection and destroys it after success', async () => {
+  it('opens a connection and resolves only after graceful close', async () => {
     const resultPromise = NetworkTransport.test({
       host: '192.168.1.12',
       port: 9100,
@@ -125,8 +168,20 @@ describe('NetworkTransport.test', () => {
 
     connectCallback();
 
+    let resolved = false;
+    resultPromise.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+
+    expect(resolved).toBe(false);
+    expect(mockSocket.end).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).not.toHaveBeenCalled();
+
+    mockSocketHandlers.close(false);
+
     await expect(resultPromise).resolves.toMatchObject({success: true});
-    expect(mockSocket.destroy).toHaveBeenCalledTimes(1);
+    expect(mockSocket.destroy).not.toHaveBeenCalled();
   });
 
   it('times out and destroys the socket', async () => {

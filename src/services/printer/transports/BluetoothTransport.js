@@ -12,11 +12,25 @@ const INSECURE_BINARY_CONNECTION_OPTIONS = {
   secureSocket: false,
 };
 
+// react-native-bluetooth-classic resolves write() after OutputStream.write(),
+// but its Android implementation exposes no flush/drain primitive. Keep the
+// RFCOMM stream open briefly so queued bytes can leave the Bluetooth stack
+// before disconnect closes the output stream.
+export const BLUETOOTH_POST_WRITE_SETTLE_MS = 200;
+
 class BluetoothTransport {
+  waitForPostWriteSettle() {
+    return new Promise(resolve => {
+      setTimeout(resolve, BLUETOOTH_POST_WRITE_SETTLE_MS);
+    });
+  }
+
   async safeDisconnect(device) {
     try {
       if (device && (await device.isConnected())) {
+        console.log('[BluetoothPrinter] Disconnect started:', Date.now());
         await device.disconnect();
+        console.log('[BluetoothPrinter] Disconnect completed:', Date.now());
       }
     } catch (error) {
       console.log('[BluetoothPrinter] Disconnect cleanup:', error);
@@ -58,6 +72,8 @@ class BluetoothTransport {
         throw new Error('Unable to open a Bluetooth printer connection.');
       }
 
+      console.log('[BluetoothPrinter] Connected:', Date.now());
+
       return true;
     } catch (secureError) {
       await this.safeDisconnect(device);
@@ -70,6 +86,8 @@ class BluetoothTransport {
         if (!connected) {
           throw new Error('Unable to open a Bluetooth printer connection.');
         }
+
+        console.log('[BluetoothPrinter] Connected insecurely:', Date.now());
 
         return true;
       } catch (insecureError) {
@@ -107,7 +125,9 @@ class BluetoothTransport {
     try {
       await this.connect(device);
 
+      console.log('[BluetoothPrinter] Write started:', Date.now());
       const written = await device.write(data);
+      console.log('[BluetoothPrinter] Write completed:', Date.now());
 
       if (!written) {
         const error = new Error(
@@ -118,6 +138,9 @@ class BluetoothTransport {
 
         throw error;
       }
+
+      await this.waitForPostWriteSettle();
+      console.log('[BluetoothPrinter] Post-write settle completed:', Date.now());
 
       return {
         success: true,

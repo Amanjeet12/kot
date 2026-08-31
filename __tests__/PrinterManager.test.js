@@ -296,6 +296,28 @@ describe('PrinterManager', () => {
     );
   });
 
+  it.each([
+    ['Network', networkConfig, NetworkTransport],
+    ['Bluetooth', bluetoothConfig, BluetoothTransport],
+    ['USB', usbConfig, UsbTransport],
+  ])(
+    '%s connection test completes before an immediate test page sends once',
+    async (name, config, transport) => {
+      await PrinterManager.testConnection(config, {requestPermission: true});
+
+      expect(transport.test).toHaveBeenCalledTimes(1);
+      expect(transport.send).not.toHaveBeenCalled();
+
+      await PrinterManager.printTestPage(config);
+
+      expect(transport.send).toHaveBeenCalledTimes(1);
+      expect(buildTestReceipt).toHaveBeenCalledTimes(1);
+      expect(transport.test.mock.invocationCallOrder[0]).toBeLessThan(
+        transport.send.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
   it('saves only a normalized serializable Bluetooth configuration', async () => {
     await PrinterManager.savePrinter({
       ...bluetoothConfig,

@@ -40,6 +40,57 @@ class UsbPrinterModuleTest {
   }
 
   @Test
+  fun `connection test cleanup finishes before following print opens`() {
+    val events = mutableListOf<String>()
+
+    withClaimedUsbResource(
+        open = {
+          events += "test-open"
+          "test-connection"
+        },
+        resource = "interface",
+        claim = { _, _ ->
+          events += "test-claim"
+          true
+        },
+        operation = { _, _ -> events += "test-operation" },
+        release = { _, _ -> events += "test-release" },
+        close = { events += "test-close" },
+    )
+
+    withClaimedUsbResource(
+        open = {
+          events += "print-open"
+          "print-connection"
+        },
+        resource = "interface",
+        claim = { _, _ ->
+          events += "print-claim"
+          true
+        },
+        operation = { _, _ -> events += "print-write-once" },
+        release = { _, _ -> events += "print-release" },
+        close = { events += "print-close" },
+    )
+
+    assertEquals(
+        listOf(
+            "test-open",
+            "test-claim",
+            "test-operation",
+            "test-release",
+            "test-close",
+            "print-open",
+            "print-claim",
+            "print-write-once",
+            "print-release",
+            "print-close",
+        ),
+        events,
+    )
+  }
+
+  @Test
   fun `claimed resource is released and closed after operation failure`() {
     val events = mutableListOf<String>()
 

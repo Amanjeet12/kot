@@ -79,4 +79,28 @@ describe('UsbTransport', () => {
     expect(UsbDeviceService.resolveSavedDevice).toHaveBeenCalledTimes(2);
     expect(UsbDeviceService.writeDevice).toHaveBeenCalledTimes(2);
   });
+
+  it('completes the connection test before the first print opens and writes once', async () => {
+    const lifecycle = [];
+    UsbDeviceService.testDevice.mockImplementationOnce(async () => {
+      lifecycle.push('test-open-claim');
+      lifecycle.push('test-release-close');
+      return {success: true};
+    });
+    UsbDeviceService.writeDevice.mockImplementationOnce(async () => {
+      lifecycle.push('print-open-claim-write-release-close');
+      return {success: true};
+    });
+
+    await UsbTransport.test(config, {requestPermission: true});
+    await UsbTransport.send(config, Buffer.from('test receipt'));
+
+    expect(lifecycle).toEqual([
+      'test-open-claim',
+      'test-release-close',
+      'print-open-claim-write-release-close',
+    ]);
+    expect(UsbDeviceService.testDevice).toHaveBeenCalledTimes(1);
+    expect(UsbDeviceService.writeDevice).toHaveBeenCalledTimes(1);
+  });
 });

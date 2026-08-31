@@ -12,7 +12,9 @@ jest.mock(
 );
 
 import BluetoothDeviceService from '../src/services/printer/bluetooth/BluetoothDeviceService';
-import BluetoothTransport from '../src/services/printer/transports/BluetoothTransport';
+import BluetoothTransport, {
+  BLUETOOTH_POST_WRITE_SETTLE_MS,
+} from '../src/services/printer/transports/BluetoothTransport';
 
 const config = {deviceAddress: '00:11:22:33:44:55'};
 
@@ -26,16 +28,27 @@ const createDevice = (overrides = {}) => ({
   ...overrides,
 });
 
+const flushMicrotasks = async () => {
+  for (let index = 0; index < 10; index += 1) {
+    await Promise.resolve();
+  }
+};
+
 describe('BluetoothTransport', () => {
   let consoleSpy;
+  let settleSpy;
 
   beforeEach(() => {
     jest.clearAllMocks();
     consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    settleSpy = jest
+      .spyOn(BluetoothTransport, 'waitForPostWriteSettle')
+      .mockResolvedValue();
   });
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    settleSpy.mockRestore();
   });
 
   it('finds a paired printer by its stable address', async () => {
@@ -120,7 +133,62 @@ describe('BluetoothTransport', () => {
     });
     expect(device.write).toHaveBeenCalledTimes(1);
     expect(device.write).toHaveBeenCalledWith(data);
+    expect(settleSpy).toHaveBeenCalledTimes(1);
     expect(device.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the connection open until the bounded post-write settle completes', async () => {
+    let finishSettle;
+    settleSpy.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finishSettle = resolve;
+        }),
+    );
+    const device = createDevice();
+    BluetoothDeviceService.getPairedDevices.mockResolvedValue([device]);
+
+    const sendPromise = BluetoothTransport.send(
+      config,
+      Buffer.from('receipt'),
+    );
+    await flushMicrotasks();
+
+    expect(device.write).toHaveBeenCalledTimes(1);
+    expect(device.disconnect).not.toHaveBeenCalled();
+    expect(BLUETOOTH_POST_WRITE_SETTLE_MS).toBe(200);
+
+    finishSettle();
+    await expect(sendPromise).resolves.toMatchObject({success: true});
+    expect(device.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('fully disconnects a connection test before the first print reconnects', async () => {
+    let finishTestDisconnect;
+    const device = createDevice();
+    device.disconnect
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishTestDisconnect = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(true);
+    BluetoothDeviceService.getPairedDevices.mockResolvedValue([device]);
+
+    const testPromise = BluetoothTransport.test(config);
+    await flushMicrotasks();
+
+    expect(device.write).not.toHaveBeenCalled();
+    expect(device.connect).toHaveBeenCalledTimes(1);
+
+    finishTestDisconnect(true);
+    await testPromise;
+    await BluetoothTransport.send(config, Buffer.from('test receipt'));
+
+    expect(device.connect).toHaveBeenCalledTimes(2);
+    expect(device.disconnect).toHaveBeenCalledTimes(2);
+    expect(device.write).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an unconfirmed write without retrying and disconnects', async () => {

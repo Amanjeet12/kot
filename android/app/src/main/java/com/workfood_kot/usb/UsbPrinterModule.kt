@@ -13,7 +13,9 @@ import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Base64
+import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -343,10 +345,15 @@ class UsbPrinterModule(
   fun testConnection(deviceName: String, promise: Promise) {
     worker.execute {
       try {
+        val startedAt = SystemClock.elapsedRealtime()
+        Log.d(TAG, "test open started t=$startedAt")
         val device = requirePermittedDevice(deviceName)
         val path = findWritablePath(device)
 
-        withClaimedPath(device, path) { _, _ -> Unit }
+        withClaimedPath(device, path) { _, _ ->
+          Log.d(TAG, "test claimed +${SystemClock.elapsedRealtime() - startedAt}ms")
+        }
+        Log.d(TAG, "test release/close complete +${SystemClock.elapsedRealtime() - startedAt}ms")
 
         promise.resolve(operationResult(device, path, 0, 0, "USB printer connection successful."))
       } catch (error: Exception) {
@@ -359,6 +366,8 @@ class UsbPrinterModule(
   fun writeBase64(deviceName: String, base64Data: String, promise: Promise) {
     worker.execute {
       try {
+        val startedAt = SystemClock.elapsedRealtime()
+        Log.d(TAG, "write open started t=$startedAt")
         val data =
             try {
               Base64.decode(base64Data, Base64.DEFAULT)
@@ -370,6 +379,7 @@ class UsbPrinterModule(
         var transferCount = 0
 
         withClaimedPath(device, path) { connection, writablePath ->
+          Log.d(TAG, "write claimed +${SystemClock.elapsedRealtime() - startedAt}ms")
           val chunkSize = maxOf(DEFAULT_WRITE_CHUNK_SIZE, writablePath.endpoint.maxPacketSize)
           transferCount =
               writeSequentialChunks(data.size, chunkSize) { offset, requestedBytes ->
@@ -381,7 +391,13 @@ class UsbPrinterModule(
                     WRITE_TIMEOUT_MS,
                 )
               }
+          Log.d(
+              TAG,
+              "write transfers complete bytes=${data.size} chunks=$transferCount " +
+                  "+${SystemClock.elapsedRealtime() - startedAt}ms; release starting",
+          )
         }
+        Log.d(TAG, "write release/close complete +${SystemClock.elapsedRealtime() - startedAt}ms")
 
         promise.resolve(
             operationResult(
@@ -730,6 +746,7 @@ class UsbPrinterModule(
   }
 
   companion object {
+    private const val TAG = "UsbPrinter"
     const val NAME = "UsbPrinter"
     const val EVENT_DEVICE_ATTACHED = "UsbPrinterDeviceAttached"
     const val EVENT_DEVICE_DETACHED = "UsbPrinterDeviceDetached"
