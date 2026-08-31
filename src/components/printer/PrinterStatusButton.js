@@ -11,10 +11,31 @@ import {
 import { useNavigation } from '@react-navigation/native';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Toast from 'react-native-toast-message';
 
 import { theme } from '../../constant';
 
 import { PRINTER_STATUS, usePrinter } from '../../contexts/PrinterContext';
+
+const USB_RETRY_MESSAGES = {
+  MULTIPLE_USB_PRINTERS_MATCH:
+    'Multiple matching USB printers were found. Select the printer again in Printer Settings.',
+  USB_CLAIM_FAILED: 'Unable to connect to the USB printer.',
+  USB_DEVICE_NOT_FOUND: 'USB printer is not connected.',
+  USB_OPEN_FAILED: 'Unable to connect to the USB printer.',
+  USB_PERMISSION_DENIED:
+    'USB permission is required to connect the printer.',
+  USB_PERMISSION_REQUIRED: 'USB printer permission is required.',
+  USB_PERMISSION_TIMEOUT: 'USB permission request timed out. Try again.',
+};
+
+export const getPrinterRetryErrorMessage = retryError => {
+  return (
+    USB_RETRY_MESSAGES[retryError?.code] ||
+    retryError?.userMessage ||
+    'Unable to connect to the printer. Check the connection and try again.'
+  );
+};
 
 const PrinterStatusButton = () => {
   const navigation = useNavigation();
@@ -44,7 +65,25 @@ const PrinterStatusButton = () => {
     /*
      * Manual fresh health check.
      */
-    await retryConnection();
+    try {
+      const connected = await retryConnection({ throwOnError: true });
+
+      if (!connected) {
+        Toast.show({
+          type: 'error',
+          text1: 'Printer connection failed',
+          text2: getPrinterRetryErrorMessage(),
+          position: 'top',
+        });
+      }
+    } catch (retryError) {
+      Toast.show({
+        type: 'error',
+        text1: 'Printer connection failed',
+        text2: getPrinterRetryErrorMessage(retryError),
+        position: 'top',
+      });
+    }
   };
 
   let text = 'Printer';

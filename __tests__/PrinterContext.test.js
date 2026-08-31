@@ -1,4 +1,5 @@
 import React from 'react';
+import {AppState} from 'react-native';
 import ReactTestRenderer, {act} from 'react-test-renderer';
 
 let mockUsbListener;
@@ -90,6 +91,7 @@ describe('PrinterProvider', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    AppState.addEventListener.mockImplementation(() => ({remove: jest.fn()}));
     latestContext = null;
     mockUsbListener = null;
     mockPrinterManager.getPrinter.mockResolvedValue(savedPrinter);
@@ -177,6 +179,10 @@ describe('PrinterProvider', () => {
     });
 
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
+      savedPrinter,
+      {requestPermission: true},
+    );
 
     await unmountProvider(renderer);
   });
@@ -392,6 +398,114 @@ describe('PrinterProvider', () => {
     await unmountProvider(renderer);
   });
 
+  it('shows checking while a manual USB retry is pending and then connects', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+    const renderer = await renderProvider();
+    let resolveRetry;
+    const pendingRetry = new Promise(resolve => {
+      resolveRetry = resolve;
+    });
+    mockPrinterManager.testConnection.mockReturnValueOnce(pendingRetry);
+
+    let retryPromise;
+    act(() => {
+      retryPromise = latestContext.retryConnection();
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CHECKING);
+    expect(latestContext.isChecking).toBe(true);
+
+    await act(async () => {
+      resolveRetry({success: true});
+      await retryPromise;
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(latestContext.isChecking).toBe(false);
+
+    await unmountProvider(renderer);
+  });
+
+  it.each([
+    ['USB_PERMISSION_DENIED', 'USB permission denied'],
+    ['USB_PERMISSION_TIMEOUT', 'USB permission timed out'],
+    ['USB_DEVICE_NOT_FOUND', 'USB printer missing'],
+  ])(
+    'ends loading and exposes %s after an interactive USB retry failure',
+    async (code, message) => {
+      const retryError = Object.assign(new Error(message), {code});
+      mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+      mockPrinterManager.testConnection.mockRejectedValue(retryError);
+      const renderer = await renderProvider();
+
+      await act(async () => {
+        await expect(
+          latestContext.retryConnection({throwOnError: true}),
+        ).rejects.toBe(retryError);
+      });
+
+      expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
+      expect(latestContext.isChecking).toBe(false);
+      expect(latestContext.error).toBe(retryError);
+      expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
+        savedUsbPrinter,
+        {requestPermission: true},
+      );
+
+      await unmountProvider(renderer);
+    },
+  );
+
+  it('allows a second USB retry after the first interactive retry fails', async () => {
+    const retryError = Object.assign(new Error('USB permission denied'), {
+      code: 'USB_PERMISSION_DENIED',
+    });
+    mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+    mockPrinterManager.testConnection
+      .mockRejectedValueOnce(new Error('USB unavailable on startup'))
+      .mockRejectedValueOnce(retryError)
+      .mockResolvedValueOnce({success: true});
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      await expect(
+        latestContext.retryConnection({throwOnError: true}),
+      ).rejects.toBe(retryError);
+    });
+    expect(latestContext.isChecking).toBe(false);
+
+    await act(async () => {
+      await expect(latestContext.retryConnection()).resolves.toBe(true);
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledTimes(3);
+
+    await unmountProvider(renderer);
+  });
+
+  it('prints directly from cached disconnected USB status and reconnects it', async () => {
+    mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+    mockPrinterManager.testConnection.mockRejectedValue(
+      new Error('USB unavailable on startup'),
+    );
+    mockPrinterManager.printReceipt.mockResolvedValue({success: true});
+    const renderer = await renderProvider();
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
+    mockPrinterManager.testConnection.mockClear();
+
+    await act(async () => {
+      await latestContext.printReceipt({id: 101});
+    });
+
+    expect(mockPrinterManager.testConnection).not.toHaveBeenCalled();
+    expect(mockPrinterManager.printReceipt).toHaveBeenCalledWith({id: 101});
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
   it('rechecks the existing global USB status on attach or detach', async () => {
     mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
 
@@ -417,6 +531,69 @@ describe('PrinterProvider', () => {
 
     await unmountProvider(renderer);
     expect(mockUsbSubscriptionRemove).toHaveBeenCalled();
+  });
+
+  it('keeps a foreground USB health check passive', async () => {
+    let appStateListener;
+    const appStateSubscriptionRemove = jest.fn();
+    const appStateSpy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((event, listener) => {
+        appStateListener = listener;
+        return {remove: appStateSubscriptionRemove};
+      });
+    mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+    const renderer = await renderProvider();
+    mockPrinterManager.testConnection.mockClear();
+
+    await act(async () => {
+      appStateListener('background');
+      appStateListener('active');
+      await Promise.resolve();
+    });
+
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
+      savedUsbPrinter,
+      {requestPermission: false},
+    );
+
+    await unmountProvider(renderer);
+    expect(appStateSubscriptionRemove).toHaveBeenCalled();
+    appStateSpy.mockRestore();
+  });
+
+  it('keeps the periodic USB health check passive', async () => {
+    jest.useFakeTimers();
+    let appStateListener;
+    const appStateSpy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((event, listener) => {
+        appStateListener = listener;
+        return {remove: jest.fn()};
+      });
+    mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
+    const renderer = await renderProvider();
+
+    await act(async () => {
+      appStateListener('background');
+      appStateListener('active');
+      await Promise.resolve();
+    });
+    mockPrinterManager.testConnection.mockClear();
+
+    await act(async () => {
+      jest.advanceTimersByTime(300000);
+      await Promise.resolve();
+    });
+
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledTimes(1);
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
+      savedUsbPrinter,
+      {requestPermission: false},
+    );
+
+    await unmountProvider(renderer);
+    appStateSpy.mockRestore();
   });
 
   it('uses network Bluetooth and infrequent USB health intervals', () => {

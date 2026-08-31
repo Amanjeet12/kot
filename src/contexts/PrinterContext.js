@@ -240,10 +240,11 @@ export const PrinterProvider = ({ children }) => {
    * ======================================================
    */
 
-  const retryConnection = useCallback(async () => {
+  const retryConnection = useCallback(async (options = {}) => {
     return checkConnection(null, {
       requestPermission: true,
       silent: false,
+      throwOnError: options.throwOnError === true,
     });
   }, [checkConnection]);
 
