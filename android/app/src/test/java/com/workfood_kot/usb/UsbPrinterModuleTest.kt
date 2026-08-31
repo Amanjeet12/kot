@@ -1,11 +1,17 @@
 package com.workfood_kot.usb
 
+import android.app.PendingIntent
+import android.os.Build
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
 class UsbPrinterModuleTest {
+  private class FakePermissionRequest(var timeoutCancelled: Boolean = false)
+
   @Test
   fun `claimed resource is released and closed after success`() {
     val events = mutableListOf<String>()
@@ -164,5 +170,133 @@ class UsbPrinterModuleTest {
     }
 
     assertEquals(listOf(0, 4), offsets)
+  }
+
+  @Test
+  fun `Android 12 permission intent is mutable and never immutable`() {
+    val flags = usbPermissionPendingIntentFlags(Build.VERSION_CODES.S)
+
+    assertTrue(flags and PendingIntent.FLAG_UPDATE_CURRENT != 0)
+    assertTrue(flags and PendingIntent.FLAG_MUTABLE != 0)
+    assertEquals(0, flags and PendingIntent.FLAG_IMMUTABLE)
+  }
+
+  @Test
+  fun `legacy permission intent keeps update current without mutability flags`() {
+    val flags = usbPermissionPendingIntentFlags(Build.VERSION_CODES.R)
+
+    assertTrue(flags and PendingIntent.FLAG_UPDATE_CURRENT != 0)
+    assertEquals(0, flags and PendingIntent.FLAG_MUTABLE)
+    assertEquals(0, flags and PendingIntent.FLAG_IMMUTABLE)
+  }
+
+  @Test
+  fun `permission grant accepts intent result or manager fallback when device extra is missing`() {
+    assertTrue(
+        isUsbPermissionGranted(
+            expectedDeviceName = "/dev/bus/usb/001/002",
+            receivedDeviceName = null,
+            grantedByIntent = true,
+            grantedByManager = false,
+        )
+    )
+    assertTrue(
+        isUsbPermissionGranted(
+            expectedDeviceName = "/dev/bus/usb/001/002",
+            receivedDeviceName = null,
+            grantedByIntent = false,
+            grantedByManager = true,
+        )
+    )
+  }
+
+  @Test
+  fun `permission denial and mismatched device never grant access`() {
+    assertFalse(
+        isUsbPermissionGranted(
+            expectedDeviceName = "/dev/bus/usb/001/002",
+            receivedDeviceName = null,
+            grantedByIntent = false,
+            grantedByManager = false,
+        )
+    )
+    assertFalse(
+        isUsbPermissionGranted(
+            expectedDeviceName = "/dev/bus/usb/001/002",
+            receivedDeviceName = "/dev/bus/usb/001/003",
+            grantedByIntent = true,
+            grantedByManager = true,
+        )
+    )
+  }
+
+  @Test
+  fun `concurrent request is rejected until active request completes`() {
+    val state =
+        SinglePendingUsbPermissionRequest<FakePermissionRequest> { request ->
+          request.timeoutCancelled = true
+        }
+    val first = FakePermissionRequest()
+    val second = FakePermissionRequest()
+
+    assertTrue(state.tryStart(first))
+    assertFalse(state.tryStart(second))
+    assertTrue(state.hasPending())
+    assertEquals(first, state.finish(first))
+    assertTrue(first.timeoutCancelled)
+    assertFalse(state.hasPending())
+    assertTrue(state.tryStart(second))
+  }
+
+  @Test
+  fun `missing permission extras still complete and clear pending state`() {
+    val request = FakePermissionRequest()
+    val state =
+        SinglePendingUsbPermissionRequest<FakePermissionRequest> { active ->
+          active.timeoutCancelled = true
+        }
+    state.tryStart(request)
+
+    val granted =
+        isUsbPermissionGranted(
+            expectedDeviceName = "/dev/bus/usb/001/002",
+            receivedDeviceName = null,
+            grantedByIntent = false,
+            grantedByManager = false,
+        )
+    val completed = state.finish(request)
+
+    assertFalse(granted)
+    assertEquals(request, completed)
+    assertFalse(state.hasPending())
+    assertTrue(request.timeoutCancelled)
+  }
+
+  @Test
+  fun `request failure clears state and permits retry`() {
+    val state = SinglePendingUsbPermissionRequest<FakePermissionRequest> { request ->
+      request.timeoutCancelled = true
+    }
+    val failed = FakePermissionRequest()
+    val retry = FakePermissionRequest()
+    state.tryStart(failed)
+
+    assertEquals(failed, state.finish(failed))
+    assertTrue(failed.timeoutCancelled)
+    assertTrue(state.tryStart(retry))
+  }
+
+  @Test
+  fun `module invalidation or timeout cancels and clears active request`() {
+    val state = SinglePendingUsbPermissionRequest<FakePermissionRequest> { request ->
+      request.timeoutCancelled = true
+    }
+    val active = FakePermissionRequest()
+    state.tryStart(active)
+
+    assertEquals(active, state.cancelPending())
+    assertTrue(active.timeoutCancelled)
+    assertFalse(state.hasPending())
+    assertNull(state.cancelPending())
   }
 }

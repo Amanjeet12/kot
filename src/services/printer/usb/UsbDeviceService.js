@@ -324,6 +324,13 @@ export class UsbDeviceService {
       );
     }
 
+    if (!refreshed.hasPermission) {
+      throw createUsbError(
+        'USB_PERMISSION_DENIED',
+        'Android did not grant USB permission for the selected printer.',
+      );
+    }
+
     return refreshed;
   }
 

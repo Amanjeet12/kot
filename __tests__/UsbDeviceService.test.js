@@ -208,4 +208,23 @@ describe('UsbDeviceService', () => {
       service.ensurePermission(printerDevice, { request: true }),
     ).rejects.toMatchObject({ code: 'USB_PERMISSION_DENIED' });
   });
+
+  it('rechecks Android permission after a native grant result', async () => {
+    const nativeModule = createNativeModule();
+    const beforePermission = { ...printerDevice, hasPermission: false };
+    const refreshedWithoutPermission = {
+      ...printerDevice,
+      hasPermission: false,
+    };
+    nativeModule.hasPermission.mockResolvedValue(false);
+    nativeModule.requestPermission.mockResolvedValue(true);
+    nativeModule.getConnectedDevices.mockResolvedValue([
+      refreshedWithoutPermission,
+    ]);
+    const service = new UsbDeviceService({ nativeModule, platform: 'android' });
+
+    await expect(
+      service.authorizeSelection(beforePermission),
+    ).rejects.toMatchObject({ code: 'USB_PERMISSION_DENIED' });
+  });
 });

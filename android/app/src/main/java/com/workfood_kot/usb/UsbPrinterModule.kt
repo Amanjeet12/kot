@@ -24,6 +24,9 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
 internal class UsbPrinterException(
@@ -101,6 +104,66 @@ internal fun writeSequentialChunks(
   return transfers
 }
 
+internal fun usbPermissionPendingIntentFlags(sdkInt: Int): Int =
+    PendingIntent.FLAG_UPDATE_CURRENT or
+        if (sdkInt >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+
+internal fun isUsbPermissionGranted(
+    expectedDeviceName: String,
+    receivedDeviceName: String?,
+    grantedByIntent: Boolean,
+    grantedByManager: Boolean,
+): Boolean {
+  val deviceMatches = receivedDeviceName == null || receivedDeviceName == expectedDeviceName
+  return deviceMatches && (grantedByIntent || grantedByManager)
+}
+
+internal class SinglePendingUsbPermissionRequest<Request : Any>(
+    private val cancelTimeout: (Request) -> Unit,
+) {
+  private val lock = Any()
+  private var pending: Request? = null
+
+  fun tryStart(request: Request): Boolean =
+      synchronized(lock) {
+        if (pending != null) {
+          false
+        } else {
+          pending = request
+          true
+        }
+      }
+
+  fun finish(request: Request): Request? {
+    val finished =
+        synchronized(lock) {
+          if (pending !== request) {
+            null
+          } else {
+            pending = null
+            request
+          }
+        }
+
+    finished?.let(cancelTimeout)
+    return finished
+  }
+
+  fun cancelPending(): Request? {
+    val cancelled =
+        synchronized(lock) {
+          val current = pending
+          pending = null
+          current
+        }
+
+    cancelled?.let(cancelTimeout)
+    return cancelled
+  }
+
+  fun hasPending(): Boolean = synchronized(lock) { pending != null }
+}
+
 @ReactModule(name = UsbPrinterModule.NAME)
 class UsbPrinterModule(
     reactContext: ReactApplicationContext,
@@ -114,9 +177,18 @@ class UsbPrinterModule(
   private val usbManager =
       reactContext.getSystemService(Context.USB_SERVICE) as UsbManager
   private val worker = Executors.newSingleThreadExecutor()
-  private val permissionLock = Any()
-  private var permissionReceiver: BroadcastReceiver? = null
-  private var permissionPromise: Promise? = null
+  private val permissionTimeoutScheduler = Executors.newSingleThreadScheduledExecutor()
+  private val permissionRequestSequence = AtomicInteger(0)
+  private class PendingPermissionRequest(
+      val promise: Promise,
+      val receiver: BroadcastReceiver,
+  ) {
+    @Volatile var timeout: ScheduledFuture<*>? = null
+  }
+  private val permissionState =
+      SinglePendingUsbPermissionRequest<PendingPermissionRequest> { request ->
+        request.timeout?.cancel(false)
+      }
   private var eventReceiverRegistered = false
 
   private val usbEventReceiver =
@@ -198,63 +270,72 @@ class UsbPrinterModule(
       return
     }
 
-    synchronized(permissionLock) {
-      if (permissionPromise != null) {
-        promise.reject(
-            "USB_PERMISSION_IN_PROGRESS",
-            "Another USB permission request is already in progress.",
-        )
-        return
-      }
-
-      val action = "${reactApplicationContext.packageName}.USB_PRINTER_PERMISSION"
-      val receiver =
-          object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-              if (intent.action != action) {
-                return
-              }
-
-              val receivedDevice = intent.usbDeviceExtra()
-              if (receivedDevice?.deviceName != deviceName) {
-                return
-              }
-
-              val granted =
-                  intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) &&
-                      usbManager.hasPermission(device)
-              val pendingPromise: Promise?
-
-              synchronized(permissionLock) {
-                pendingPromise = permissionPromise
-                permissionPromise = null
-                permissionReceiver = null
-              }
-
-              unregisterPermissionReceiver(this)
-              pendingPromise?.resolve(granted)
+    val requestId = permissionRequestSequence.incrementAndGet()
+    val action =
+        "${reactApplicationContext.packageName}.USB_PRINTER_PERMISSION.$requestId"
+    lateinit var request: PendingPermissionRequest
+    val receiver =
+        object : BroadcastReceiver() {
+          override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != action) {
+              return
             }
+
+            val receivedDevice = intent.usbDeviceExtra()
+            val grantedByIntent =
+                intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+            val grantedByManager =
+                try {
+                  usbManager.hasPermission(device)
+                } catch (_: Exception) {
+                  false
+                }
+            val granted =
+                isUsbPermissionGranted(
+                    expectedDeviceName = deviceName,
+                    receivedDeviceName = receivedDevice?.deviceName,
+                    grantedByIntent = grantedByIntent,
+                    grantedByManager = grantedByManager,
+                )
+
+            completePermissionRequest(request, granted)
           }
+        }
+    request = PendingPermissionRequest(promise, receiver)
 
-      try {
-        registerPermissionReceiver(receiver, IntentFilter(action))
-        permissionReceiver = receiver
-        permissionPromise = promise
+    if (!permissionState.tryStart(request)) {
+      promise.reject(
+          "USB_PERMISSION_IN_PROGRESS",
+          "Another USB permission request is already in progress.",
+      )
+      return
+    }
 
-        val permissionIntent =
-            PendingIntent.getBroadcast(
-                reactApplicationContext,
-                0,
-                Intent(action).setPackage(reactApplicationContext.packageName),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        usbManager.requestPermission(device, permissionIntent)
-      } catch (error: Exception) {
-        permissionReceiver = null
-        permissionPromise = null
-        unregisterPermissionReceiver(receiver)
-        reject(promise, error, "USB_PERMISSION_REQUEST_FAILED")
-      }
+    try {
+      registerPermissionReceiver(receiver, IntentFilter(action))
+      request.timeout =
+          permissionTimeoutScheduler.schedule(
+              {
+                rejectPermissionRequest(
+                    request,
+                    "USB_PERMISSION_TIMEOUT",
+                    "Android did not return the USB permission result in time. Try again.",
+                )
+              },
+              USB_PERMISSION_TIMEOUT_MS,
+              TimeUnit.MILLISECONDS,
+          )
+
+      val permissionIntent =
+          PendingIntent.getBroadcast(
+              reactApplicationContext,
+              requestId,
+              Intent(action).setPackage(reactApplicationContext.packageName),
+              usbPermissionPendingIntentFlags(Build.VERSION.SDK_INT),
+          )
+      usbManager.requestPermission(device, permissionIntent)
+    } catch (error: Exception) {
+      failPermissionRequest(request, error)
     }
   }
 
@@ -318,15 +399,14 @@ class UsbPrinterModule(
   }
 
   override fun invalidate() {
-    synchronized(permissionLock) {
-      permissionPromise?.reject(
+    permissionState.cancelPending()?.let { request ->
+      unregisterPermissionReceiver(request.receiver)
+      request.promise.reject(
           "USB_MODULE_INVALIDATED",
           "USB permission request was cancelled because the USB module stopped.",
       )
-      permissionPromise = null
-      permissionReceiver?.let(::unregisterPermissionReceiver)
-      permissionReceiver = null
     }
+    permissionTimeoutScheduler.shutdownNow()
     unregisterUsbEventReceiver()
     worker.shutdownNow()
     super.invalidate()
@@ -593,6 +673,28 @@ class UsbPrinterModule(
     }
   }
 
+  private fun completePermissionRequest(request: PendingPermissionRequest, granted: Boolean) {
+    val completed = permissionState.finish(request) ?: return
+    unregisterPermissionReceiver(completed.receiver)
+    completed.promise.resolve(granted)
+  }
+
+  private fun rejectPermissionRequest(
+      request: PendingPermissionRequest,
+      code: String,
+      message: String,
+  ) {
+    val completed = permissionState.finish(request) ?: return
+    unregisterPermissionReceiver(completed.receiver)
+    completed.promise.reject(code, message)
+  }
+
+  private fun failPermissionRequest(request: PendingPermissionRequest, error: Exception) {
+    val completed = permissionState.finish(request) ?: return
+    unregisterPermissionReceiver(completed.receiver)
+    reject(completed.promise, error, "USB_PERMISSION_REQUEST_FAILED")
+  }
+
   private fun Intent.usbDeviceExtra(): UsbDevice? =
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
@@ -633,6 +735,7 @@ class UsbPrinterModule(
     const val EVENT_DEVICE_DETACHED = "UsbPrinterDeviceDetached"
     private const val DEFAULT_WRITE_CHUNK_SIZE = 16 * 1024
     private const val WRITE_TIMEOUT_MS = 5_000
+    private const val USB_PERMISSION_TIMEOUT_MS = 30_000L
     private val COMMON_SERIAL_VENDOR_IDS =
         setOf(
             0x0403, // FTDI
