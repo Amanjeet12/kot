@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
+  Animated,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 
@@ -24,6 +25,8 @@ const STATUS_DIALOG_CONFIG = {
       'This removes the order from the preparation queue. Use this only when the tuck shop cannot fulfil it.',
 
     confirmText: 'Yes, cancel order',
+
+    slideText: 'Slide to cancel order',
 
     iconColor: theme.colors.error,
 
@@ -46,6 +49,8 @@ const STATUS_DIALOG_CONFIG = {
 
     confirmText: 'Yes, mark ready',
 
+    slideText: 'Slide to mark ready',
+
     iconColor: theme.colors.success,
 
     iconBackground: '#E7F7F0',
@@ -67,6 +72,8 @@ const STATUS_DIALOG_CONFIG = {
 
     confirmText: 'Yes, mark delivered',
 
+    slideText: 'Slide to mark delivered',
+
     iconColor: theme.colors.success,
 
     iconBackground: '#E7F7F0',
@@ -87,6 +94,80 @@ const OrderStatusConfirmModal = ({
   onClose,
   onConfirm,
 }) => {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const translateX = useRef(new Animated.Value(0)).current;
+  const dragStart = useRef(0);
+  const loadingRef = useRef(loading);
+  const onConfirmRef = useRef(onConfirm);
+
+  const thumbSize = 48;
+  const trackPadding = 4;
+  const maxDrag = Math.max(0, trackWidth - thumbSize - trackPadding * 2);
+  const maxDragRef = useRef(maxDrag);
+
+  loadingRef.current = loading;
+  onConfirmRef.current = onConfirm;
+  maxDragRef.current = maxDrag;
+
+  useEffect(() => {
+    translateX.setValue(0);
+  }, [visible, nextStatus, translateX]);
+
+  const resetSlider = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 22,
+      bounciness: 5,
+    }).start();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !loadingRef.current,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        !loadingRef.current && Math.abs(gestureState.dx) > 2,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        translateX.stopAnimation(value => {
+          dragStart.current = value;
+        });
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const dragLimit = maxDragRef.current;
+        const nextPosition = Math.min(
+          Math.max(0, dragStart.current + gestureState.dx),
+          dragLimit,
+        );
+        translateX.setValue(nextPosition);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const dragLimit = maxDragRef.current;
+        const finalPosition = Math.min(
+          Math.max(0, dragStart.current + gestureState.dx),
+          dragLimit,
+        );
+
+        if (
+          dragLimit > 0 &&
+          finalPosition >= dragLimit * 0.78 &&
+          !loadingRef.current
+        ) {
+          Animated.timing(translateX, {
+            toValue: dragLimit,
+            duration: 120,
+            useNativeDriver: false,
+          }).start(() => onConfirmRef.current());
+          return;
+        }
+
+        resetSlider();
+      },
+      onPanResponderTerminate: resetSlider,
+    }),
+  ).current;
+
   if (!visible || !order || !nextStatus) {
     return null;
   }
@@ -170,53 +251,46 @@ const OrderStatusConfirmModal = ({
             </Text>
           </View>
 
-          {/* BUTTONS */}
+          {/* SLIDE TO CONFIRM */}
 
-          <View style={styles.actions}>
-            <TouchableOpacity
-              disabled={loading}
-              activeOpacity={0.8}
-              onPress={onClose}
-              style={styles.keepButton}
-            >
-              <Text allowFontScaling={false} style={styles.keepButtonText}>
-                {nextStatus === 'cancelled' ? 'Keep order' : 'Not now'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              disabled={loading}
-              activeOpacity={0.8}
-              onPress={onConfirm}
+          <View
+            {...(!loading ? panResponder.panHandlers : {})}
+            accessibilityLabel={config.slideText}
+            accessibilityRole="adjustable"
+            accessibilityHint="Drag the handle all the way to the right to confirm"
+            style={[
+              styles.sliderTrack,
+              config.dangerous && styles.dangerSliderTrack,
+            ]}
+            onLayout={event => setTrackWidth(event.nativeEvent.layout.width)}
+          >
+            <Text
+              allowFontScaling={false}
               style={[
-                styles.confirmButton,
+                styles.sliderText,
+                config.dangerous && styles.dangerSliderText,
+              ]}
+            >
+              {loading ? 'Updating order...' : config.slideText}
+            </Text>
 
-                {
-                  backgroundColor: config.confirmBackground,
-
-                  borderColor: config.dangerous
-                    ? '#F3A6A6'
-                    : config.confirmBackground,
-                },
+            <Animated.View
+              style={[
+                styles.sliderThumb,
+                config.dangerous && styles.dangerSliderThumb,
+                { transform: [{ translateX }] },
               ]}
             >
               {loading ? (
                 <ActivityIndicator size="small" color={config.confirmColor} />
               ) : (
-                <Text
-                  allowFontScaling={false}
-                  style={[
-                    styles.confirmText,
-
-                    {
-                      color: config.confirmColor,
-                    },
-                  ]}
-                >
-                  {config.confirmText}
-                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={24}
+                  color={config.confirmColor}
+                />
               )}
-            </TouchableOpacity>
+            </Animated.View>
           </View>
         </View>
       </View>
@@ -335,55 +409,51 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  actions: {
-    flexDirection: 'row',
-
-    gap: theme.spacing.md,
-
+  sliderTrack: {
+    height: 56,
     marginTop: theme.spacing.lg,
-  },
-
-  keepButton: {
-    flex: 1,
-
-    height: 56,
-
     alignItems: 'center',
-
     justifyContent: 'center',
-
     borderRadius: theme.radius.xl,
-
-    backgroundColor: '#0D0F0E',
+    backgroundColor: theme.colors.primary,
+    overflow: 'hidden',
   },
 
-  keepButtonText: {
-    color: theme.colors.white,
-
-    fontSize: 12,
-
-    fontWeight: '800',
-  },
-
-  confirmButton: {
-    flex: 1,
-
-    height: 56,
-
-    alignItems: 'center',
-
-    justifyContent: 'center',
-
+  dangerSliderTrack: {
     borderWidth: 1,
-
-    borderRadius: theme.radius.xl,
+    borderColor: '#F3A6A6',
+    backgroundColor: '#FDE8E8',
   },
 
-  confirmText: {
+  sliderText: {
+    color: theme.colors.textPrimary,
     fontSize: 12,
-
     fontWeight: '800',
-
     textAlign: 'center',
+  },
+
+  dangerSliderText: {
+    color: theme.colors.error,
+  },
+
+  sliderThumb: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  dangerSliderThumb: {
+    backgroundColor: theme.colors.surface,
   },
 });

@@ -11,12 +11,20 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { useResponsive } from '../../../contexts/ResponsiveContext';
+import { useSocket } from '../../../contexts/SocketContext';
 
 import { theme } from '../../../constant';
 import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
 const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
   const { isTablet } = useResponsive();
+  const { isSocketConnected, socketError } = useSocket();
+
+  const connectionStatus = isSocketConnected
+    ? { label: 'Live · Socket connected', color: theme.colors.success }
+    : socketError
+    ? { label: 'Socket connection error', color: theme.colors.error }
+    : { label: 'Socket connecting...', color: '#D69E00' };
 
   return (
     <View style={[styles.container, isTablet && styles.tabletContainer]}>
@@ -40,10 +48,15 @@ const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
         <PrinterStatusButton />
 
         <View style={styles.liveBadge}>
-          <View style={styles.liveDot} />
+          <View
+            style={[
+              styles.liveDot,
+              { backgroundColor: connectionStatus.color },
+            ]}
+          />
 
           <Text allowFontScaling={false} style={styles.liveText}>
-            Live · Updated just now
+            {connectionStatus.label}
           </Text>
         </View>
 
@@ -150,7 +163,6 @@ const styles = StyleSheet.create({
 
     borderRadius: theme.radius.round,
 
-    backgroundColor: theme.colors.success,
   },
 
   liveText: {

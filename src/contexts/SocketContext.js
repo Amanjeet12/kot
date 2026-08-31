@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
+import { useQueryClient } from '@tanstack/react-query';
 import { disconnectSocket, initializeSocket } from '../socket/socket';
+import { ACTIVE_ORDERS_QUERY_KEY } from '../hooks/queries/useActiveOrders';
 
 const SocketContext = createContext(null);
 
 export const SocketProvider = ({ children, token, user, isAuthenticated }) => {
+  const queryClient = useQueryClient();
   const [socket, setSocket] = useState(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [socketError, setSocketError] = useState(null);
@@ -56,11 +58,31 @@ export const SocketProvider = ({ children, token, user, isAuthenticated }) => {
       setSocketError(error);
     };
 
+    const handleOrderCreated = data => {
+      console.log('[Socket] tuck_shop_order_created:', data);
+
+      queryClient.invalidateQueries({
+        queryKey: ACTIVE_ORDERS_QUERY_KEY,
+      });
+    };
+
+    const handleQueueUpdated = data => {
+      console.log('[Socket] tuck_shop_queue_updated:', data);
+
+      queryClient.invalidateQueries({
+        queryKey: ACTIVE_ORDERS_QUERY_KEY,
+      });
+    };
+
     socketInstance.on('connect', handleConnect);
 
     socketInstance.on('disconnect', handleDisconnect);
 
     socketInstance.on('connect_error', handleConnectError);
+
+    socketInstance.on('tuck_shop_order_created', handleOrderCreated);
+
+    socketInstance.on('tuck_shop_queue_updated', handleQueueUpdated);
 
     return () => {
       socketInstance.off('connect', handleConnect);
@@ -69,9 +91,13 @@ export const SocketProvider = ({ children, token, user, isAuthenticated }) => {
 
       socketInstance.off('connect_error', handleConnectError);
 
+      socketInstance.off('tuck_shop_order_created', handleOrderCreated);
+
+      socketInstance.off('tuck_shop_queue_updated', handleQueueUpdated);
+
       disconnectSocket();
     };
-  }, [token, isAuthenticated, user?.id]);
+  }, [token, isAuthenticated, user?.id, queryClient]);
 
   return (
     <SocketContext.Provider

@@ -1,6 +1,14 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  PanResponder,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -9,6 +17,100 @@ import { theme } from '../../../constant';
 import { useResponsive } from '../../../contexts/ResponsiveContext';
 
 const MAX_PREVIEW_ITEMS = 3;
+
+const StatusSlider = ({ label, onComplete, loading = false }) => {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const widthRef = useRef(0);
+  const loadingRef = useRef(loading);
+  const onCompleteRef = useRef(onComplete);
+  const dragStartRef = useRef(0);
+
+  loadingRef.current = loading;
+  onCompleteRef.current = onComplete;
+
+  const reset = useCallback(() => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 22,
+      bounciness: 4,
+    }).start();
+  }, [translateX]);
+
+  useEffect(() => {
+    if (!loading) {
+      reset();
+    }
+  }, [loading, reset]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !loadingRef.current,
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        !loadingRef.current && Math.abs(gesture.dx) > 2,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        translateX.stopAnimation(value => {
+          dragStartRef.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        const limit = Math.max(0, widthRef.current - 42);
+        translateX.setValue(
+          Math.min(Math.max(0, dragStartRef.current + gesture.dx), limit),
+        );
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const limit = Math.max(0, widthRef.current - 42);
+        const position = Math.min(
+          Math.max(0, dragStartRef.current + gesture.dx),
+          limit,
+        );
+
+        if (limit > 0 && position >= limit * 0.78) {
+          Animated.timing(translateX, {
+            toValue: limit,
+            duration: 100,
+            useNativeDriver: false,
+          }).start(() => onCompleteRef.current?.());
+        } else {
+          reset();
+        }
+      },
+      onPanResponderTerminate: reset,
+    }),
+  ).current;
+
+  return (
+    <View
+      {...(!loading ? responder.panHandlers : {})}
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      onLayout={event => {
+        widthRef.current = event.nativeEvent.layout.width;
+      }}
+      style={styles.statusSlider}
+    >
+      <Text allowFontScaling={false} style={styles.statusSliderText}>
+        {loading ? 'Updating...' : label}
+      </Text>
+      <Animated.View
+        style={[styles.statusSliderThumb, { transform: [{ translateX }] }]}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={theme.colors.textPrimary} />
+        ) : (
+          <Ionicons
+            name="chevron-forward"
+            size={17}
+            color={theme.colors.textPrimary}
+          />
+        )}
+      </Animated.View>
+    </View>
+  );
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -58,7 +160,13 @@ const OrderItem = ({ item }) => {
 |--------------------------------------------------------------------------
 */
 
-const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
+const OrderCard = ({
+  order,
+  isNext,
+  onChangeStatus,
+  onViewDetails,
+  statusUpdating = false,
+}) => {
   const { isTablet, isLargeTablet } = useResponsive();
 
   /*
@@ -321,21 +429,11 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
 
         {isConfirmed && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.primaryButton}
-              onPress={() => onChangeStatus?.('ready')}
-            >
-              <Ionicons
-                name="checkmark-outline"
-                size={15}
-                color={theme.colors.textPrimary}
-              />
-
-              <Text allowFontScaling={false} style={styles.primaryButtonText}>
-                Mark as ready
-              </Text>
-            </TouchableOpacity>
+            <StatusSlider
+              label="Slide to mark ready"
+              loading={statusUpdating}
+              onComplete={() => onChangeStatus?.('ready')}
+            />
 
             <TouchableOpacity
               activeOpacity={0.8}
@@ -355,21 +453,11 @@ const OrderCard = ({ order, isNext, onChangeStatus, onViewDetails }) => {
 
         {isReady && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.deliveredButton}
-              onPress={() => onChangeStatus?.('delivered')}
-            >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={16}
-                color={theme.colors.textPrimary}
-              />
-
-              <Text allowFontScaling={false} style={styles.deliveredButtonText}>
-                Mark as delivered
-              </Text>
-            </TouchableOpacity>
+            <StatusSlider
+              label="Slide to mark delivered"
+              loading={statusUpdating}
+              onComplete={() => onChangeStatus?.('delivered')}
+            />
           </View>
         )}
 
@@ -834,6 +922,40 @@ const styles = StyleSheet.create({
     fontSize: 9,
 
     fontWeight: '800',
+  },
+
+  statusSlider: {
+    flex: 1,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 3,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.primary,
+    overflow: 'hidden',
+  },
+
+  statusSliderText: {
+    color: theme.colors.textPrimary,
+    fontSize: 8,
+    fontWeight: '800',
+  },
+
+  statusSliderThumb: {
+    position: 'absolute',
+    left: 3,
+    top: 3,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 13,
+    backgroundColor: theme.colors.surface,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
   },
 
   /*
