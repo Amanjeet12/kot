@@ -4,12 +4,14 @@ import EscPosProtocol from '../protocols/EscPosProtocol';
 
 import { getCharactersPerLine } from '../printerTypes';
 
+import receiptLogoRasters from './receiptLogoRaster';
+
 const normalizeText = value => {
   if (value === null || value === undefined) {
     return '';
   }
 
-  return String(value).replace(/₹/g, 'Rs.').trim();
+  return String(value).replace(/₹|â‚¹/g, 'Rs.').replace(/\s+/g, ' ').trim();
 };
 
 const formatMoney = value => {
@@ -102,6 +104,17 @@ const pushWrapped = (chunks, value, width) => {
   });
 };
 
+const getReceiptLogo = width => {
+  const safePixelWidth = Math.max(0, Number(width) || 0) * 12;
+  const preferredPixelWidth = 256;
+
+  return receiptLogoRasters
+    .filter(
+      logo => logo.width <= safePixelWidth && logo.width <= preferredPixelWidth,
+    )
+    .sort((first, second) => second.width - first.width)[0];
+};
+
 export const buildReceipt = (order, config) => {
   const width =
     config?.charactersPerLine || getCharactersPerLine(config?.paperWidth);
@@ -113,13 +126,28 @@ export const buildReceipt = (order, config) => {
   const orderNumber =
     order?.orderNumber || order?.order_number || order?.id || '-';
 
-  const kotNumber = order?.kotNumber || order?.kot_number || order?.id || '-';
-
   const totalQuantity = items.reduce((total, item) => {
     const quantity = Number(item?.quantity);
 
     return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 0);
   }, 0);
+
+  const reference =
+    order?.reference ||
+    order?.referenceNumber ||
+    order?.transactionReference ||
+    order?.transaction_id ||
+    order?.transactionId ||
+    order?.paymentReference;
+
+  const logo = getReceiptLogo(width);
+
+  const paymentMode = normalizeText(
+    order?.paymentMethod ||
+      order?.payment_method ||
+      order?.paymentType ||
+      'Wallet',
+  ).replace(/\s+paid$/i, '');
 
   chunks.push(EscPosProtocol.initialize());
 
@@ -129,19 +157,19 @@ export const buildReceipt = (order, config) => {
 
   chunks.push(EscPosProtocol.alignCenter());
 
-  chunks.push(EscPosProtocol.bold(true));
+  if (logo) {
+    chunks.push(EscPosProtocol.rasterImage(logo.data, logo.width, logo.height));
 
-  chunks.push(EscPosProtocol.doubleSize());
-
-  chunks.push(EscPosProtocol.text('WORKFOOD\n'));
+    chunks.push(EscPosProtocol.feed(1));
+  }
 
   chunks.push(EscPosProtocol.normalSize());
 
-  chunks.push(EscPosProtocol.text('ORDER RECEIPT\n'));
-
   chunks.push(EscPosProtocol.bold(false));
 
-  chunks.push(EscPosProtocol.text(`${separator(width, '=')}\n`));
+  chunks.push(EscPosProtocol.text('ORDER RECEIPT\n'));
+
+  chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
 
   /*
    * ORDER
@@ -149,27 +177,51 @@ export const buildReceipt = (order, config) => {
 
   chunks.push(EscPosProtocol.alignLeft());
 
+  chunks.push(EscPosProtocol.normalSize());
+
   chunks.push(EscPosProtocol.bold(true));
 
-  chunks.push(
-    EscPosProtocol.text(
-      `${twoColumns(`Order #${orderNumber}`, order?.orderTime || '', width)}\n`,
-    ),
-  );
+  const orderLabel = `Order #${orderNumber}`;
+  const orderTime = normalizeText(order?.orderTime);
+  const orderWidthMultiplier =
+    !orderTime || orderLabel.length * 2 + orderTime.length + 1 <= width ? 2 : 1;
+
+  chunks.push(EscPosProtocol.textSize(orderWidthMultiplier, 2));
+
+  chunks.push(EscPosProtocol.text(orderLabel));
+
+  if (orderTime) {
+    chunks.push(EscPosProtocol.normalSize());
+
+    const spaces = Math.max(
+      width - orderLabel.length * orderWidthMultiplier - orderTime.length,
+      1,
+    );
+
+    chunks.push(EscPosProtocol.text(`${' '.repeat(spaces)}${orderTime}\n`));
+  } else {
+    chunks.push(EscPosProtocol.text('\n'));
+
+    chunks.push(EscPosProtocol.normalSize());
+  }
 
   chunks.push(EscPosProtocol.bold(false));
 
-  chunks.push(EscPosProtocol.text(`KOT #${kotNumber}\n`));
+  chunks.push(EscPosProtocol.text('\n'));
 
   if (order?.customerName) {
     pushWrapped(chunks, `Customer: ${order.customerName}`, width);
   }
 
   if (order?.collectionPoint) {
-    pushWrapped(chunks, `Collection: ${order.collectionPoint}`, width);
+    pushWrapped(chunks, `Pickup: ${order.collectionPoint}`, width);
   }
 
-  chunks.push(EscPosProtocol.text(`Quantity: ${totalQuantity} items\n`));
+  chunks.push(
+    EscPosProtocol.text(
+      `Quantity: ${totalQuantity} ${totalQuantity === 1 ? 'item' : 'items'}\n`,
+    ),
+  );
 
   chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
 
@@ -211,16 +263,21 @@ export const buildReceipt = (order, config) => {
     const itemName =
       item?.name || item?.itemName || item?.item_name || `Item ${index + 1}`;
 
-    const title = `${quantity}x ${itemName}`;
+    const title = `${quantity} x ${itemName}`;
 
-    const titleLines = wrapText(title, Math.max(width - 12, 10));
+    const amountText = `Rs.${formatMoney(amount)}`;
+
+    const titleLines = wrapText(
+      title,
+      Math.max(width - amountText.length - 1, 1),
+    );
 
     chunks.push(EscPosProtocol.bold(true));
 
     if (titleLines.length) {
       chunks.push(
         EscPosProtocol.text(
-          `${twoColumns(titleLines[0], `Rs.${formatMoney(amount)}`, width)}\n`,
+          `${twoColumns(titleLines[0], amountText, width)}\n`,
         ),
       );
 
@@ -231,18 +288,10 @@ export const buildReceipt = (order, config) => {
 
     chunks.push(EscPosProtocol.bold(false));
 
-    if (item?.category) {
-      pushWrapped(chunks, `  ${item.category}`, width);
-    }
-
-    if (item?.description) {
-      pushWrapped(chunks, `  ${item.description}`, width);
-    }
-
     const itemNote = item?.preparationNote || item?.instructions || item?.note;
 
     if (itemNote) {
-      pushWrapped(chunks, `  Note: ${itemNote}`, width);
+      pushWrapped(chunks, `Note: ${itemNote}`, width);
     }
 
     chunks.push(EscPosProtocol.text('\n'));
@@ -255,9 +304,7 @@ export const buildReceipt = (order, config) => {
    */
 
   chunks.push(
-    EscPosProtocol.text(
-      `${twoColumns('Payment', order?.paymentType || 'Wallet paid', width)}\n`,
-    ),
+    EscPosProtocol.text(`${twoColumns('Payment', paymentMode, width)}\n`),
   );
 
   /*
@@ -266,24 +313,39 @@ export const buildReceipt = (order, config) => {
 
   chunks.push(EscPosProtocol.bold(true));
 
+  const totalText = `Rs.${formatMoney(
+    order?.totalAmount ?? order?.total_amount,
+  )}`;
+
+  const totalWidthMultiplier =
+    'TOTAL'.length + totalText.length + 1 <= Math.floor(width / 2) ? 2 : 1;
+
+  const totalLineWidth = Math.floor(width / totalWidthMultiplier);
+
+  chunks.push(EscPosProtocol.normalSize());
+
+  chunks.push(EscPosProtocol.textSize(totalWidthMultiplier, 2));
+
   chunks.push(
-    EscPosProtocol.text(
-      `${twoColumns(
-        'TOTAL',
-        `Rs.${formatMoney(order?.totalAmount ?? order?.total_amount)}`,
-        width,
-      )}\n`,
-    ),
+    EscPosProtocol.text(`${twoColumns('TOTAL', totalText, totalLineWidth)}\n`),
   );
 
+  chunks.push(EscPosProtocol.normalSize());
+
   chunks.push(EscPosProtocol.bold(false));
+
+  chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
+
+  if (reference) {
+    pushWrapped(chunks, `Ref: ${reference}`, width);
+  }
 
   /*
    * PREPARATION NOTE
    */
 
   if (order?.preparationNote) {
-    chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
+    chunks.push(EscPosProtocol.text('\n'));
 
     chunks.push(EscPosProtocol.bold(true));
 
@@ -298,17 +360,21 @@ export const buildReceipt = (order, config) => {
    * FOOTER
    */
 
-  chunks.push(EscPosProtocol.text(`${separator(width, '=')}\n`));
+  chunks.push(EscPosProtocol.text('\n'));
 
   chunks.push(EscPosProtocol.alignCenter());
 
   chunks.push(EscPosProtocol.bold(true));
 
-  chunks.push(EscPosProtocol.text('Thank You\n'));
+  chunks.push(EscPosProtocol.text('Thank you\n'));
 
   chunks.push(EscPosProtocol.bold(false));
 
   chunks.push(EscPosProtocol.text(`Order #${orderNumber}\n`));
+
+  chunks.push(EscPosProtocol.text(`${separator(width)}\n`));
+
+  chunks.push(EscPosProtocol.text('Good food. Better workdays.\n'));
 
   chunks.push(EscPosProtocol.feed(3));
 
