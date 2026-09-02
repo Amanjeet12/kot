@@ -1,6 +1,6 @@
 import React from 'react';
-import {AppState} from 'react-native';
-import ReactTestRenderer, {act} from 'react-test-renderer';
+import { AppState } from 'react-native';
+import ReactTestRenderer, { act } from 'react-test-renderer';
 
 let mockUsbListener;
 const mockUsbSubscriptionRemove = jest.fn();
@@ -23,7 +23,7 @@ jest.mock('../src/services/printer/usb/UsbDeviceService', () => ({
     addConnectionListener: jest.fn(listener => {
       mockUsbListener = listener;
 
-      return {remove: mockUsbSubscriptionRemove};
+      return { remove: mockUsbSubscriptionRemove };
     }),
   },
 }));
@@ -38,7 +38,7 @@ import {
   usePrinter,
 } from '../src/contexts/PrinterContext';
 
-const savedPrinter = {host: '192.168.1.12', port: 9100, name: 'Kitchen'};
+const savedPrinter = { host: '192.168.1.12', port: 9100, name: 'Kitchen' };
 const savedBluetoothPrinter = {
   connectionType: 'bluetooth',
   deviceAddress: '00:11:22:33:44:55',
@@ -56,6 +56,11 @@ const savedUsbPrinter = {
 };
 
 let latestContext;
+
+const flushPromises = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 const ContextProbe = () => {
   latestContext = usePrinter();
@@ -91,11 +96,11 @@ describe('PrinterProvider', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    AppState.addEventListener.mockImplementation(() => ({remove: jest.fn()}));
+    AppState.addEventListener.mockImplementation(() => ({ remove: jest.fn() }));
     latestContext = null;
     mockUsbListener = null;
     mockPrinterManager.getPrinter.mockResolvedValue(savedPrinter);
-    mockPrinterManager.testConnection.mockResolvedValue({success: true});
+    mockPrinterManager.testConnection.mockResolvedValue({ success: true });
     consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
   });
 
@@ -108,9 +113,12 @@ describe('PrinterProvider', () => {
     const renderer = await renderProvider();
 
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
-    expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(savedPrinter, {
-      requestPermission: false,
-    });
+    expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
+      savedPrinter,
+      {
+        requestPermission: false,
+      },
+    );
 
     await unmountProvider(renderer);
   });
@@ -136,7 +144,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
       savedBluetoothPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
 
     await unmountProvider(renderer);
@@ -170,7 +178,7 @@ describe('PrinterProvider', () => {
   it('retries a disconnected printer', async () => {
     mockPrinterManager.testConnection
       .mockRejectedValueOnce(new Error('Printer offline'))
-      .mockResolvedValueOnce({success: true});
+      .mockResolvedValueOnce({ success: true });
 
     const renderer = await renderProvider();
 
@@ -181,7 +189,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
       savedPrinter,
-      {requestPermission: true},
+      { requestPermission: true },
     );
 
     await unmountProvider(renderer);
@@ -191,7 +199,7 @@ describe('PrinterProvider', () => {
     mockPrinterManager.getPrinter.mockResolvedValue(savedBluetoothPrinter);
     mockPrinterManager.testConnection
       .mockRejectedValueOnce(new Error('Bluetooth printer offline'))
-      .mockResolvedValueOnce({success: true});
+      .mockResolvedValueOnce({ success: true });
 
     const renderer = await renderProvider();
 
@@ -202,7 +210,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
       savedBluetoothPrinter,
-      {requestPermission: true},
+      { requestPermission: true },
     );
 
     await unmountProvider(renderer);
@@ -212,12 +220,12 @@ describe('PrinterProvider', () => {
     mockPrinterManager.testConnection.mockRejectedValue(
       new Error('Printer offline'),
     );
-    mockPrinterManager.printReceipt.mockResolvedValue({success: true});
+    mockPrinterManager.printReceipt.mockResolvedValue({ success: true });
 
     const renderer = await renderProvider();
 
     await act(async () => {
-      await latestContext.printReceipt({id: 42});
+      await latestContext.printReceipt({ id: 42 });
     });
 
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
@@ -233,7 +241,7 @@ describe('PrinterProvider', () => {
     const renderer = await renderProvider();
 
     await act(async () => {
-      await expect(latestContext.printReceipt({id: 42})).rejects.toThrow(
+      await expect(latestContext.printReceipt({ id: 42 })).rejects.toThrow(
         'Write failed',
       );
     });
@@ -261,7 +269,7 @@ describe('PrinterProvider', () => {
     mockPrinterManager.testConnection.mockRejectedValue(
       new Error('Printer offline'),
     );
-    mockPrinterManager.printTestPage.mockResolvedValue({success: true});
+    mockPrinterManager.printTestPage.mockResolvedValue({ success: true });
 
     const renderer = await renderProvider();
 
@@ -301,12 +309,14 @@ describe('PrinterProvider', () => {
       await latestContext.savePrinter(savedUsbPrinter);
     });
 
-    expect(mockPrinterManager.savePrinter).toHaveBeenCalledWith(savedUsbPrinter);
+    expect(mockPrinterManager.savePrinter).toHaveBeenCalledWith(
+      savedUsbPrinter,
+    );
     expect(latestContext.printer).toEqual(savedUsbPrinter);
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
       savedUsbPrinter,
-      {requestPermission: true},
+      { requestPermission: true },
     );
 
     await unmountProvider(renderer);
@@ -314,7 +324,7 @@ describe('PrinterProvider', () => {
 
   it('updates USB global status after test and normal print outcomes', async () => {
     mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
-    mockPrinterManager.printTestPage.mockResolvedValue({success: true});
+    mockPrinterManager.printTestPage.mockResolvedValue({ success: true });
     mockPrinterManager.printReceipt.mockRejectedValueOnce(
       new Error('USB write failed'),
     );
@@ -327,15 +337,15 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
 
     await act(async () => {
-      await expect(latestContext.printReceipt({id: 99})).rejects.toThrow(
+      await expect(latestContext.printReceipt({ id: 99 })).rejects.toThrow(
         'USB write failed',
       );
     });
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
 
-    mockPrinterManager.printReceipt.mockResolvedValueOnce({success: true});
+    mockPrinterManager.printReceipt.mockResolvedValueOnce({ success: true });
     await act(async () => {
-      await latestContext.printReceipt({id: 100});
+      await latestContext.printReceipt({ id: 100 });
     });
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
 
@@ -351,7 +361,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
       savedUsbPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
     expect(mockUsbDeviceService.addConnectionListener).toHaveBeenCalledTimes(1);
 
@@ -371,7 +381,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
       savedUsbPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
 
     await unmountProvider(renderer);
@@ -381,7 +391,7 @@ describe('PrinterProvider', () => {
     mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
     mockPrinterManager.testConnection
       .mockRejectedValueOnce(new Error('USB offline'))
-      .mockResolvedValueOnce({success: true});
+      .mockResolvedValueOnce({ success: true });
 
     const renderer = await renderProvider();
 
@@ -392,7 +402,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
       savedUsbPrinter,
-      {requestPermission: true},
+      { requestPermission: true },
     );
 
     await unmountProvider(renderer);
@@ -416,7 +426,7 @@ describe('PrinterProvider', () => {
     expect(latestContext.isChecking).toBe(true);
 
     await act(async () => {
-      resolveRetry({success: true});
+      resolveRetry({ success: true });
       await retryPromise;
     });
 
@@ -433,14 +443,14 @@ describe('PrinterProvider', () => {
   ])(
     'ends loading and exposes %s after an interactive USB retry failure',
     async (code, message) => {
-      const retryError = Object.assign(new Error(message), {code});
+      const retryError = Object.assign(new Error(message), { code });
       mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
       mockPrinterManager.testConnection.mockRejectedValue(retryError);
       const renderer = await renderProvider();
 
       await act(async () => {
         await expect(
-          latestContext.retryConnection({throwOnError: true}),
+          latestContext.retryConnection({ throwOnError: true }),
         ).rejects.toBe(retryError);
       });
 
@@ -449,7 +459,7 @@ describe('PrinterProvider', () => {
       expect(latestContext.error).toBe(retryError);
       expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
         savedUsbPrinter,
-        {requestPermission: true},
+        { requestPermission: true },
       );
 
       await unmountProvider(renderer);
@@ -464,12 +474,12 @@ describe('PrinterProvider', () => {
     mockPrinterManager.testConnection
       .mockRejectedValueOnce(new Error('USB unavailable on startup'))
       .mockRejectedValueOnce(retryError)
-      .mockResolvedValueOnce({success: true});
+      .mockResolvedValueOnce({ success: true });
     const renderer = await renderProvider();
 
     await act(async () => {
       await expect(
-        latestContext.retryConnection({throwOnError: true}),
+        latestContext.retryConnection({ throwOnError: true }),
       ).rejects.toBe(retryError);
     });
     expect(latestContext.isChecking).toBe(false);
@@ -489,19 +499,147 @@ describe('PrinterProvider', () => {
     mockPrinterManager.testConnection.mockRejectedValue(
       new Error('USB unavailable on startup'),
     );
-    mockPrinterManager.printReceipt.mockResolvedValue({success: true});
+    mockPrinterManager.printReceipt.mockResolvedValue({ success: true });
     const renderer = await renderProvider();
 
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
     mockPrinterManager.testConnection.mockClear();
 
     await act(async () => {
-      await latestContext.printReceipt({id: 101});
+      await latestContext.printReceipt({ id: 101 });
     });
 
     expect(mockPrinterManager.testConnection).not.toHaveBeenCalled();
-    expect(mockPrinterManager.printReceipt).toHaveBeenCalledWith({id: 101});
+    expect(mockPrinterManager.printReceipt).toHaveBeenCalledWith({ id: 101 });
     expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+
+    await unmountProvider(renderer);
+  });
+
+  it('waits for an active health check before starting a receipt print', async () => {
+    const renderer = await renderProvider();
+    let finishCheck;
+    const pendingCheck = new Promise(resolve => {
+      finishCheck = resolve;
+    });
+    mockPrinterManager.testConnection.mockReturnValueOnce(pendingCheck);
+    mockPrinterManager.printReceipt.mockResolvedValue({ success: true });
+
+    let checkPromise;
+    let printPromise;
+    act(() => {
+      checkPromise = latestContext.checkConnection(savedPrinter);
+      printPromise = latestContext.printReceipt({ id: 201 });
+    });
+
+    await act(async () => flushPromises());
+    expect(mockPrinterManager.printReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishCheck({ success: true });
+      await checkPromise;
+      await printPromise;
+    });
+
+    expect(mockPrinterManager.printReceipt).toHaveBeenCalledTimes(1);
+    expect(
+      mockPrinterManager.testConnection.mock.invocationCallOrder[1],
+    ).toBeLessThan(mockPrinterManager.printReceipt.mock.invocationCallOrder[0]);
+
+    await unmountProvider(renderer);
+  });
+
+  it('skips a passive health check while a receipt print is active', async () => {
+    const renderer = await renderProvider();
+    let finishPrint;
+    mockPrinterManager.printReceipt.mockReturnValueOnce(
+      new Promise(resolve => {
+        finishPrint = resolve;
+      }),
+    );
+    mockPrinterManager.testConnection.mockClear();
+
+    let printPromise;
+    act(() => {
+      printPromise = latestContext.printReceipt({ id: 202 });
+    });
+    await act(async () => flushPromises());
+
+    let checkResult;
+    await act(async () => {
+      checkResult = await latestContext.checkConnection(savedPrinter, {
+        silent: true,
+      });
+    });
+
+    expect(checkResult).toBe(false);
+    expect(mockPrinterManager.testConnection).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishPrint({ success: true });
+      await printPromise;
+    });
+
+    await unmountProvider(renderer);
+  });
+
+  it('serializes a test page and a real receipt print', async () => {
+    const renderer = await renderProvider();
+    let finishTestPage;
+    mockPrinterManager.printTestPage.mockReturnValueOnce(
+      new Promise(resolve => {
+        finishTestPage = resolve;
+      }),
+    );
+    mockPrinterManager.printReceipt.mockResolvedValue({ success: true });
+
+    let testPromise;
+    let printPromise;
+    act(() => {
+      testPromise = latestContext.printTestPage(savedPrinter);
+      printPromise = latestContext.printReceipt({ id: 203 });
+    });
+    await act(async () => flushPromises());
+
+    expect(mockPrinterManager.printTestPage).toHaveBeenCalledTimes(1);
+    expect(mockPrinterManager.printReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishTestPage({ success: true });
+      await testPromise;
+      await printPromise;
+    });
+
+    expect(mockPrinterManager.printReceipt).toHaveBeenCalledTimes(1);
+
+    await unmountProvider(renderer);
+  });
+
+  it('lets a queued successful print supersede an older failed health check', async () => {
+    const renderer = await renderProvider();
+    let failCheck;
+    mockPrinterManager.testConnection.mockReturnValueOnce(
+      new Promise((resolve, reject) => {
+        failCheck = reject;
+      }),
+    );
+    mockPrinterManager.printReceipt.mockResolvedValue({ success: true });
+
+    let checkPromise;
+    let printPromise;
+    act(() => {
+      checkPromise = latestContext.checkConnection(savedPrinter);
+      printPromise = latestContext.printReceipt({ id: 204 });
+    });
+
+    await act(async () => {
+      failCheck(new Error('Old health failure'));
+      await checkPromise;
+      await printPromise;
+    });
+
+    expect(latestContext.status).toBe(PRINTER_STATUS.CONNECTED);
+    expect(latestContext.error).toBeNull();
 
     await unmountProvider(renderer);
   });
@@ -519,14 +657,14 @@ describe('PrinterProvider', () => {
     );
 
     await act(async () => {
-      await mockUsbListener({type: 'detached'});
+      await mockUsbListener({ type: 'detached' });
     });
 
     expect(mockPrinterManager.testConnection).toHaveBeenCalledTimes(2);
     expect(latestContext.status).toBe(PRINTER_STATUS.DISCONNECTED);
     expect(mockPrinterManager.testConnection).toHaveBeenLastCalledWith(
       savedUsbPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
 
     await unmountProvider(renderer);
@@ -540,7 +678,7 @@ describe('PrinterProvider', () => {
       .spyOn(AppState, 'addEventListener')
       .mockImplementation((event, listener) => {
         appStateListener = listener;
-        return {remove: appStateSubscriptionRemove};
+        return { remove: appStateSubscriptionRemove };
       });
     mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
     const renderer = await renderProvider();
@@ -554,7 +692,7 @@ describe('PrinterProvider', () => {
 
     expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
       savedUsbPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
 
     await unmountProvider(renderer);
@@ -569,7 +707,7 @@ describe('PrinterProvider', () => {
       .spyOn(AppState, 'addEventListener')
       .mockImplementation((event, listener) => {
         appStateListener = listener;
-        return {remove: jest.fn()};
+        return { remove: jest.fn() };
       });
     mockPrinterManager.getPrinter.mockResolvedValue(savedUsbPrinter);
     const renderer = await renderProvider();
@@ -589,7 +727,7 @@ describe('PrinterProvider', () => {
     expect(mockPrinterManager.testConnection).toHaveBeenCalledTimes(1);
     expect(mockPrinterManager.testConnection).toHaveBeenCalledWith(
       savedUsbPrinter,
-      {requestPermission: false},
+      { requestPermission: false },
     );
 
     await unmountProvider(renderer);

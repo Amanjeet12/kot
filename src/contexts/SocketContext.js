@@ -59,7 +59,9 @@ export const SocketProvider = ({ children, token, user, isAuthenticated }) => {
     };
 
     const handleOrderCreated = data => {
-      console.log('[Socket] tuck_shop_order_created:', data);
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.log('[Socket] tuck_shop_order_created received');
+      }
 
       queryClient.invalidateQueries({
         queryKey: ACTIVE_ORDERS_QUERY_KEY,

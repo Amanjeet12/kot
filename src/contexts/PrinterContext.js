@@ -49,10 +49,6 @@ export const PrinterProvider = ({ children }) => {
 
   const appStateRef = useRef(AppState.currentState);
 
-  const checkingRef = useRef(false);
-
-  const checkingDoneRef = useRef(null);
-
   const mountedRef = useRef(true);
 
   const printerRef = useRef(null);
@@ -60,6 +56,70 @@ export const PrinterProvider = ({ children }) => {
   const printerRevisionRef = useRef(0);
 
   const operationRevisionRef = useRef(0);
+
+  const activeOperationRef = useRef(null);
+
+  const operationWaitersRef = useRef([]);
+
+  const acquireOperation = useCallback((type, { passive = false } = {}) => {
+    if (passive && activeOperationRef.current) {
+      return null;
+    }
+
+    const createRelease = () => {
+      let released = false;
+
+      return () => {
+        if (released) {
+          return;
+        }
+
+        released = true;
+        activeOperationRef.current = null;
+
+        if (!mountedRef.current || operationWaitersRef.current.length === 0) {
+          return;
+        }
+
+        // Printing takes priority over queued interactive checks. Equal
+        // priority operations retain insertion order.
+        let nextIndex = 0;
+
+        operationWaitersRef.current.forEach((waiter, index) => {
+          if (
+            waiter.priority > operationWaitersRef.current[nextIndex].priority
+          ) {
+            nextIndex = index;
+          }
+        });
+
+        const [next] = operationWaitersRef.current.splice(nextIndex, 1);
+        const release = createRelease();
+
+        activeOperationRef.current = { type: next.type, release };
+        next.resolve(release);
+      };
+    };
+
+    if (!activeOperationRef.current) {
+      const release = createRelease();
+
+      activeOperationRef.current = { type, release };
+      return release;
+    }
+
+    if (passive) {
+      return null;
+    }
+
+    return new Promise(resolve => {
+      operationWaitersRef.current.push({
+        type,
+        priority: type === 'check' ? 1 : 2,
+        resolve,
+      });
+    });
+  }, []);
 
   const updatePrinter = useCallback(nextPrinter => {
     printerRevisionRef.current += 1;
@@ -127,28 +187,16 @@ export const PrinterProvider = ({ children }) => {
         throwOnError = false,
       } = options;
 
-      /*
-       * Avoid two health checks running simultaneously.
-       */
-      if (checkingRef.current) {
-        if (printerConfig && checkingDoneRef.current) {
-          await checkingDoneRef.current;
+      const passive = silent && !requestPermission;
+      const operation = acquireOperation('check', { passive });
+      const releaseOperation =
+        typeof operation === 'function' ? operation : await operation;
 
-          return checkConnection(printerConfig, options);
-        }
-
+      if (!releaseOperation) {
         return false;
       }
 
-      checkingRef.current = true;
-
       const operationRevision = ++operationRevisionRef.current;
-
-      let finishCheck;
-
-      checkingDoneRef.current = new Promise(resolve => {
-        finishCheck = resolve;
-      });
 
       let printerRevision = printerRevisionRef.current;
 
@@ -224,14 +272,10 @@ export const PrinterProvider = ({ children }) => {
 
         return false;
       } finally {
-        checkingRef.current = false;
-
-        finishCheck?.();
-
-        checkingDoneRef.current = null;
+        releaseOperation();
       }
     },
-    [updatePrinter],
+    [acquireOperation, updatePrinter],
   );
 
   /*
@@ -240,13 +284,16 @@ export const PrinterProvider = ({ children }) => {
    * ======================================================
    */
 
-  const retryConnection = useCallback(async (options = {}) => {
-    return checkConnection(null, {
-      requestPermission: true,
-      silent: false,
-      throwOnError: options.throwOnError === true,
-    });
-  }, [checkConnection]);
+  const retryConnection = useCallback(
+    async (options = {}) => {
+      return checkConnection(null, {
+        requestPermission: true,
+        silent: false,
+        throwOnError: options.throwOnError === true,
+      });
+    },
+    [checkConnection],
+  );
 
   /*
    * ======================================================
@@ -317,88 +364,114 @@ export const PrinterProvider = ({ children }) => {
    * ======================================================
    */
 
-  const printReceipt = useCallback(async order => {
-    const operationRevision = ++operationRevisionRef.current;
+  const printReceipt = useCallback(
+    async order => {
+      const operation = acquireOperation('receipt');
+      const releaseOperation =
+        typeof operation === 'function' ? operation : await operation;
 
-    try {
-      const result = await PrinterManager.printReceipt(order);
-
-      if (!printerRef.current) {
-        updatePrinter(await PrinterManager.getPrinter());
+      if (!releaseOperation) {
+        throw new Error('Printer operation was cancelled.');
       }
 
-      if (
-        !mountedRef.current ||
-        operationRevision !== operationRevisionRef.current
-      ) {
-        return result;
-      }
+      const operationRevision = ++operationRevisionRef.current;
 
-      /*
-       * Fresh transport print succeeded.
-       */
-      setStatus(PRINTER_STATUS.CONNECTED);
+      try {
+        const result = await PrinterManager.printReceipt(order);
 
-      setLastCheckedAt(new Date());
+        if (!printerRef.current) {
+          updatePrinter(await PrinterManager.getPrinter());
+        }
 
-      setError(null);
+        if (
+          !mountedRef.current ||
+          operationRevision !== operationRevisionRef.current
+        ) {
+          return result;
+        }
 
-      return result;
-    } catch (printError) {
-      console.log('[PrinterContext] print failed:', printError);
-
-      if (
-        !mountedRef.current ||
-        operationRevision !== operationRevisionRef.current
-      ) {
-        throw printError;
-      }
-
-      if (printError?.code === 'PRINTER_NOT_CONFIGURED') {
-        updatePrinter(null);
-
-        setStatus(PRINTER_STATUS.NOT_CONFIGURED);
-      } else {
-        setStatus(PRINTER_STATUS.DISCONNECTED);
-      }
-
-      setLastCheckedAt(new Date());
-
-      setError(printError);
-
-      throw printError;
-    }
-  }, [updatePrinter]);
-
-  const printTestPage = useCallback(async printerConfig => {
-    const operationRevision = ++operationRevisionRef.current;
-
-    try {
-      const result = await PrinterManager.printTestPage(printerConfig);
-
-      if (
-        mountedRef.current &&
-        operationRevision === operationRevisionRef.current
-      ) {
+        /*
+         * Fresh transport print succeeded.
+         */
         setStatus(PRINTER_STATUS.CONNECTED);
+
         setLastCheckedAt(new Date());
+
         setError(null);
-      }
 
-      return result;
-    } catch (printError) {
-      if (
-        mountedRef.current &&
-        operationRevision === operationRevisionRef.current
-      ) {
-        setStatus(PRINTER_STATUS.DISCONNECTED);
+        return result;
+      } catch (printError) {
+        console.log('[PrinterContext] print failed:', printError);
+
+        if (
+          !mountedRef.current ||
+          operationRevision !== operationRevisionRef.current
+        ) {
+          throw printError;
+        }
+
+        if (printError?.code === 'PRINTER_NOT_CONFIGURED') {
+          updatePrinter(null);
+
+          setStatus(PRINTER_STATUS.NOT_CONFIGURED);
+        } else {
+          setStatus(PRINTER_STATUS.DISCONNECTED);
+        }
+
         setLastCheckedAt(new Date());
+
         setError(printError);
+
+        throw printError;
+      } finally {
+        releaseOperation();
+      }
+    },
+    [acquireOperation, updatePrinter],
+  );
+
+  const printTestPage = useCallback(
+    async printerConfig => {
+      const operation = acquireOperation('test');
+      const releaseOperation =
+        typeof operation === 'function' ? operation : await operation;
+
+      if (!releaseOperation) {
+        throw new Error('Printer operation was cancelled.');
       }
 
-      throw printError;
-    }
-  }, []);
+      const operationRevision = ++operationRevisionRef.current;
+
+      try {
+        const result = await PrinterManager.printTestPage(printerConfig);
+
+        if (
+          mountedRef.current &&
+          operationRevision === operationRevisionRef.current
+        ) {
+          setStatus(PRINTER_STATUS.CONNECTED);
+          setLastCheckedAt(new Date());
+          setError(null);
+        }
+
+        return result;
+      } catch (printError) {
+        if (
+          mountedRef.current &&
+          operationRevision === operationRevisionRef.current
+        ) {
+          setStatus(PRINTER_STATUS.DISCONNECTED);
+          setLastCheckedAt(new Date());
+          setError(printError);
+        }
+
+        throw printError;
+      } finally {
+        releaseOperation();
+      }
+    },
+    [acquireOperation],
+  );
 
   /*
    * ======================================================
@@ -408,9 +481,14 @@ export const PrinterProvider = ({ children }) => {
 
   useEffect(() => {
     mountedRef.current = true;
+    const operationWaiters = operationWaitersRef.current;
 
     return () => {
       mountedRef.current = false;
+
+      operationWaiters.splice(0).forEach(waiter => {
+        waiter.resolve(null);
+      });
     };
   }, []);
 

@@ -6,13 +6,17 @@ import { store, persistor } from './store/store';
 import { queryClient } from './config/queryClient';
 import { SocketProvider } from './contexts/SocketContext';
 import { PrinterProvider } from './contexts/PrinterContext';
+import AutoPrintManager from './services/printer/AutoPrintManager';
 
 const GlobalProviders = ({ children }) => {
   const { token, user, isAuthenticated } = useSelector(state => state.auth);
 
   return (
     <SocketProvider token={token} user={user} isAuthenticated={isAuthenticated}>
-      <PrinterProvider>{children}</PrinterProvider>
+      <PrinterProvider>
+        <AutoPrintManager />
+        {children}
+      </PrinterProvider>
     </SocketProvider>
   );
 };
