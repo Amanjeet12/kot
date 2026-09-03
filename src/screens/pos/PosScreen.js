@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,33 +16,126 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../constant';
 import { useResponsive } from '../../contexts/ResponsiveContext';
-import { MOCK_MENU_ITEMS } from '../menu/mockMenuItems';
+import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
+import { useTuckShopCategories } from '../../hooks/queries/useTuckShopCategories';
 import OrdersHeader from '../orders/components/OrdersHeader';
-
-const categories = ['All', ...new Set(MOCK_MENU_ITEMS.map(item => item.category))];
 
 const PosScreen = () => {
   const { isMobile, isPortrait, isLargeTablet } = useResponsive();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState({});
+  const [failedImages, setFailedImages] = useState({});
+  const [categoryScroll, setCategoryScroll] = useState({
+    contentWidth: 0,
+    viewportWidth: 0,
+    x: 0,
+  });
+  const categoryListRef = useRef(null);
   const shouldStack = isMobile || isPortrait;
+  const productColumns = isMobile ? 2 : 3;
+
+  const {
+    data: menuResponse,
+    isLoading: isLoadingMenu,
+    isFetching: isFetchingMenu,
+    error: menuError,
+    refetch: refetchMenu,
+  } = useTodayTuckShopMenu();
+  const {
+    data: categoriesResponse,
+    isFetching: isFetchingCategories,
+    refetch: refetchCategories,
+  } = useTuckShopCategories();
+
+  const menuItems = useMemo(() => {
+    const items = menuResponse?.data?.items || [];
+
+    return items.map(item => ({
+      id: item.daily_menu_item_id,
+      dailyMenuItemId: item.daily_menu_item_id,
+      tuckShopItemId: item.tuck_shop_item_id,
+      categoryId: item.category_id,
+      name: item.itemName,
+      foodType: item.type,
+      category: item.category,
+      price: Number(item.price || 0),
+      stock: Number(
+        item.availableQuantity ?? item.inventory?.availableQuantity ?? 0,
+      ),
+      enabled: Boolean(item.isAvailable),
+      image: Array.isArray(item.image) ? item.image[0] : item.image,
+      icon:
+        String(item.type).toLowerCase() === 'non-veg'
+          ? 'fast-food-outline'
+          : 'restaurant-outline',
+    }));
+  }, [menuResponse]);
+
+  const categories = useMemo(() => {
+    const responseData = categoriesResponse?.data;
+    const rawCategories = Array.isArray(responseData)
+      ? responseData
+      : responseData?.categories || categoriesResponse?.categories || [];
+
+    return [
+      'All',
+      ...new Set(rawCategories
+        .map(item =>
+          item.categoryName ??
+          item.category_name ??
+          item.name ??
+          item.category,
+        )
+        .filter(Boolean)),
+    ];
+  }, [categoriesResponse]);
 
   const products = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return MOCK_MENU_ITEMS.filter(item =>
+    return menuItems.filter(item =>
       item.enabled && item.stock > 0 &&
       (category === 'All' || item.category === category) &&
       (!term || item.name.toLowerCase().includes(term)),
     );
-  }, [category, search]);
+  }, [category, menuItems, search]);
 
   const cartItems = useMemo(
-    () => MOCK_MENU_ITEMS.filter(item => cart[item.id]).map(item => ({ ...item, quantity: cart[item.id] })),
-    [cart],
+    () => menuItems.filter(item => cart[item.id]).map(item => ({ ...item, quantity: cart[item.id] })),
+    [cart, menuItems],
   );
   const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const canScrollCategoriesLeft = categoryScroll.x > 4;
+  const canScrollCategoriesRight =
+    categoryScroll.contentWidth > categoryScroll.viewportWidth &&
+    categoryScroll.x <
+      categoryScroll.contentWidth - categoryScroll.viewportWidth - 4;
+
+  const scrollCategories = direction => {
+    const maximumX = Math.max(
+      0,
+      categoryScroll.contentWidth - categoryScroll.viewportWidth,
+    );
+    const nextX = Math.max(
+      0,
+      Math.min(maximumX, categoryScroll.x + direction * 180),
+    );
+
+    categoryListRef.current?.scrollTo({ x: nextX, animated: true });
+  };
+
+  const handleCategoryListLayout = event => {
+    const viewportWidth = event.nativeEvent?.layout?.width || 0;
+
+    setCategoryScroll(current => ({ ...current, viewportWidth }));
+  };
+
+  const handleCategoryScroll = event => {
+    const x = event.nativeEvent?.contentOffset?.x || 0;
+
+    setCategoryScroll(current => ({ ...current, x }));
+  };
 
   const changeQuantity = (item, change) => {
     setCart(current => {
@@ -62,9 +157,32 @@ const PosScreen = () => {
   const renderProduct = ({ item }) => {
     const quantity = cart[item.id] || 0;
     return (
+      <View
+        style={[
+          styles.productWrapper,
+          productColumns === 2
+            ? styles.productWrapperTwoColumns
+            : styles.productWrapperThreeColumns,
+        ]}
+      >
       <TouchableOpacity style={styles.productCard} activeOpacity={0.75} onPress={() => changeQuantity(item, 1)}>
         <View style={styles.productIcon}>
-          <Ionicons name={item.icon} size={25} color={theme.colors.textPrimary} />
+          {item.image && !failedImages[item.id] ? (
+            <Image
+              source={{ uri: item.image }}
+              resizeMode="cover"
+              onError={() =>
+                setFailedImages(current => ({ ...current, [item.id]: true }))
+              }
+              style={styles.productImage}
+            />
+          ) : (
+            <Ionicons
+              name={item.icon}
+              size={25}
+              color={theme.colors.textPrimary}
+            />
+          )}
         </View>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
         <Text style={styles.productMeta}>{item.category} · {item.stock} left</Text>
@@ -76,6 +194,7 @@ const PosScreen = () => {
           </View>
         </View>
       </TouchableOpacity>
+      </View>
     );
   };
 
@@ -85,14 +204,17 @@ const PosScreen = () => {
         <OrdersHeader
           title="POS"
           subtitle="Create a walk-in order. Select items and collect payment."
+          isRefreshing={isFetchingMenu || isFetchingCategories}
           onRefresh={() => {
             setSearch('');
             setCategory('All');
+            refetchMenu();
+            refetchCategories();
           }}
         />
 
         <View style={[styles.content, shouldStack && styles.contentStacked]}>
-          <View style={styles.catalogue}>
+          <View style={styles.catalogueCard}>
             <View style={styles.searchBox}>
               <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
               <TextInput
@@ -102,24 +224,93 @@ const PosScreen = () => {
                 placeholderTextColor={theme.colors.textMuted}
                 style={styles.searchInput}
               />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-              {categories.map(item => (
-                <TouchableOpacity key={item} onPress={() => setCategory(item)} style={[styles.category, category === item && styles.categoryActive]}>
-                  <Text style={[styles.categoryText, category === item && styles.categoryTextActive]}>{item}</Text>
+              {search.length > 0 && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  hitSlop={8}
+                  onPress={() => setSearch('')}
+                  style={styles.clearSearchButton}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={20}
+                    color={theme.colors.textSecondary}
+                  />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+            </View>
+            <View style={styles.categoryScroller}>
+              <ScrollView
+                ref={categoryListRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.categoryList}
+                contentContainerStyle={styles.categoryRow}
+                onLayout={handleCategoryListLayout}
+                onContentSizeChange={contentWidth =>
+                  setCategoryScroll(current => ({
+                    ...current,
+                    contentWidth,
+                  }))
+                }
+                onScroll={handleCategoryScroll}
+                scrollEventThrottle={16}
+              >
+                {categories.map(item => (
+                  <TouchableOpacity key={item} onPress={() => setCategory(item)} style={[styles.category, category === item && styles.categoryActive]}>
+                    <Text style={[styles.categoryText, category === item && styles.categoryTextActive]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {canScrollCategoriesLeft && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Show previous categories"
+                  onPress={() => scrollCategories(-1)}
+                  style={[styles.categoryArrow, styles.categoryArrowLeft]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={theme.colors.textPrimary} />
+                </TouchableOpacity>
+              )}
+              {canScrollCategoriesRight && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Show more categories"
+                  onPress={() => scrollCategories(1)}
+                  style={[styles.categoryArrow, styles.categoryArrowRight]}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
+                </TouchableOpacity>
+              )}
+            </View>
             <FlatList
               data={products}
-              key={shouldStack ? 'two-columns' : 'three-columns'}
-              numColumns={shouldStack ? 2 : 3}
+              key={`${productColumns}-column-products`}
+              numColumns={productColumns}
               keyExtractor={item => String(item.id)}
               renderItem={renderProduct}
               columnWrapperStyle={styles.productRow}
               contentContainerStyle={styles.productList}
               showsVerticalScrollIndicator={false}
-              ListEmptyComponent={<Text style={styles.emptyText}>No available items found.</Text>}
+              ListEmptyComponent={
+                isLoadingMenu ? (
+                  <View style={styles.feedbackState}>
+                    <ActivityIndicator size="large" color={theme.colors.primaryDark} />
+                    <Text style={styles.emptyText}>Loading today's menu...</Text>
+                  </View>
+                ) : menuError ? (
+                  <View style={styles.feedbackState}>
+                    <Ionicons name="cloud-offline-outline" size={30} color={theme.colors.textMuted} />
+                    <Text style={styles.emptyText}>Unable to load the menu.</Text>
+                    <TouchableOpacity style={styles.retryButton} onPress={() => refetchMenu()}>
+                      <Text style={styles.retryText}>Try again</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={styles.emptyText}>No available items found.</Text>
+                )
+              }
             />
           </View>
 
@@ -166,18 +357,28 @@ const styles = StyleSheet.create({
   containerLarge: { paddingHorizontal: theme.spacing.xxl },
   content: { flex: 1, flexDirection: 'row', gap: theme.spacing.lg },
   contentStacked: { flexDirection: 'column' },
-  catalogue: { flex: 1.65, minHeight: 250 },
+  catalogueCard: { flex: 1.65, minHeight: 250, borderWidth: 1, borderColor: '#DADDD6', borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, padding: theme.spacing.lg, overflow: 'hidden' },
   searchBox: { height: 48, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.xl, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.md },
   searchInput: { flex: 1, color: theme.colors.textPrimary, fontSize: 14, marginLeft: theme.spacing.sm, paddingVertical: 0 },
-  categoryRow: { gap: theme.spacing.sm, paddingVertical: theme.spacing.md },
-  category: { height: 36, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.round, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.lg },
+  clearSearchButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  categoryScroller: { position: 'relative', marginBottom: theme.spacing.md },
+  categoryList: { flexGrow: 0, flexShrink: 0 },
+  categoryRow: { gap: theme.spacing.sm, paddingTop: theme.spacing.md },
+  categoryArrow: { position: 'absolute', top: theme.spacing.md, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, zIndex: 2 },
+  categoryArrowLeft: { left: 0 },
+  categoryArrowRight: { right: 0 },
+  category: { height: 40, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceSecondary, paddingHorizontal: theme.spacing.lg },
   categoryActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
   categoryText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: '600' },
   categoryTextActive: { color: theme.colors.textPrimary, fontWeight: '700' },
-  productList: { paddingBottom: theme.spacing.xl },
+  productList: { flexGrow: 1, paddingBottom: theme.spacing.sm },
   productRow: { gap: theme.spacing.md, marginBottom: theme.spacing.md },
-  productCard: { flex: 1, minWidth: 0, minHeight: 154, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.xxl, backgroundColor: theme.colors.surface, padding: theme.spacing.md },
-  productIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.xl, backgroundColor: theme.colors.primaryLight },
+  productWrapper: { minWidth: 0 },
+  productWrapperTwoColumns: { flex: 0.5 },
+  productWrapperThreeColumns: { flex: 0.333333 },
+  productCard: { width: '100%', minHeight: 154, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.xxl, backgroundColor: theme.colors.surface, padding: theme.spacing.md },
+  productIcon: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.xl, backgroundColor: theme.colors.primaryLight, overflow: 'hidden' },
+  productImage: { width: '100%', height: '100%' },
   productName: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', marginTop: 10 },
   productMeta: { color: theme.colors.textSecondary, fontSize: 10, marginTop: 4 },
   productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8 },
@@ -185,7 +386,10 @@ const styles = StyleSheet.create({
   addButton: { minWidth: 32, height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.colors.surfaceSecondary, paddingHorizontal: 7 },
   addButtonActive: { backgroundColor: theme.colors.primary },
   addQuantity: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '800', marginLeft: 3 },
-  emptyText: { color: theme.colors.textSecondary, textAlign: 'center', marginTop: 40 },
+  feedbackState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50 },
+  emptyText: { color: theme.colors.textSecondary, textAlign: 'center', marginTop: theme.spacing.md },
+  retryButton: { marginTop: theme.spacing.md, borderRadius: theme.radius.lg, backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm },
+  retryText: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '700' },
   cartCard: { flex: 1, borderWidth: 1, borderColor: '#DADDD6', borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, overflow: 'hidden' },
   cartCardStacked: { flex: 1, minHeight: 280 },
   cartHeader: { minHeight: 72, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingHorizontal: theme.spacing.lg },
