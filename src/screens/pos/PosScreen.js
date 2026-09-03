@@ -1,7 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   LayoutAnimation,
@@ -16,24 +15,54 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
 
 import { theme } from '../../constant';
 import { useResponsive } from '../../contexts/ResponsiveContext';
 import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
 import { useTuckShopCategories } from '../../hooks/queries/useTuckShopCategories';
+import { ACTIVE_ORDERS_QUERY_KEY } from '../../hooks/queries/useActiveOrders';
+import {
+  createMockCustomer,
+  createMockPosOrder,
+  lookupMockCustomer,
+} from '../../services/pos/posMockService';
 import OrdersHeader from '../orders/components/OrdersHeader';
+import CustomerDetailsStep from './components/CustomerDetailsStep';
+import OrderSummaryStep from './components/OrderSummaryStep';
+import OrderSuccessStep from './components/OrderSuccessStep';
+
+const CHECKOUT_STEPS = {
+  CART: 'cart',
+  CUSTOMER: 'customer',
+  SUMMARY: 'summary',
+  SUCCESS: 'success',
+};
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
 const PosScreen = () => {
+  const queryClient = useQueryClient();
+  const user = useSelector(state => state.auth.user);
   const { isMobile, isPortrait, isLargeTablet } = useResponsive();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState({});
   const [isCartCollapsed, setIsCartCollapsed] = useState(false);
   const [catalogueWidth, setCatalogueWidth] = useState(0);
+  const [checkoutStep, setCheckoutStep] = useState(CHECKOUT_STEPS.CART);
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [resolvedCustomer, setResolvedCustomer] = useState(null);
+  const [customerLookupStatus, setCustomerLookupStatus] = useState('idle');
+  const [customerLookupError, setCustomerLookupError] = useState('');
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [createdOrder, setCreatedOrder] = useState(null);
+  const [cartError, setCartError] = useState('');
   const [failedImages, setFailedImages] = useState({});
   const [categoryScroll, setCategoryScroll] = useState({
     contentWidth: 0,
@@ -41,6 +70,8 @@ const PosScreen = () => {
     x: 0,
   });
   const categoryListRef = useRef(null);
+  const lastLookupPhoneRef = useRef(null);
+  const orderRequestKeyRef = useRef(null);
   const shouldStack = isMobile || isPortrait;
   const productColumns = useMemo(() => {
     const fallbackColumns = isMobile ? 2 : isCartCollapsed ? 4 : 3;
@@ -143,6 +174,19 @@ const PosScreen = () => {
     (sum, item) => sum + item.price * item.quantity,
     0,
   );
+  const isPhoneValid = /^\d{10}$/.test(customerPhone);
+  const isExistingCustomer = customerLookupStatus === 'existing';
+  const canContinueCustomer =
+    isPhoneValid &&
+    (isExistingCustomer ||
+      (customerLookupStatus === 'new' && customerName.trim().length > 0));
+  const hasInvalidCartItem = Object.entries(cart).some(([itemId, quantity]) => {
+    const currentItem = menuItems.find(
+      item => String(item.id) === String(itemId),
+    );
+
+    return !currentItem || !currentItem.enabled || quantity > currentItem.stock;
+  });
   const canScrollCategoriesLeft = categoryScroll.x > 4;
   const canScrollCategoriesRight =
     categoryScroll.contentWidth > categoryScroll.viewportWidth &&
@@ -187,7 +231,79 @@ const PosScreen = () => {
     setIsCartCollapsed(collapsed);
   };
 
+  const resetCustomerLookup = () => {
+    setResolvedCustomer(null);
+    setCustomerLookupStatus('idle');
+    setCustomerLookupError('');
+    lastLookupPhoneRef.current = null;
+  };
+
+  const lookupCustomer = async phone => {
+    if (!/^\d{10}$/.test(phone) || lastLookupPhoneRef.current === phone) {
+      return;
+    }
+
+    lastLookupPhoneRef.current = phone;
+    setResolvedCustomer(null);
+    setCustomerLookupStatus('loading');
+    setCustomerLookupError('');
+
+    try {
+      const customer = await lookupMockCustomer(phone);
+
+      if (lastLookupPhoneRef.current !== phone) return;
+
+      if (customer) {
+        setResolvedCustomer({
+          id: customer.customer_id,
+          name: customer.name,
+          phone: customer.phone,
+        });
+        setCustomerLookupStatus('existing');
+      } else {
+        setCustomerLookupStatus('new');
+      }
+    } catch (lookupError) {
+      if (lastLookupPhoneRef.current !== phone) return;
+      setCustomerLookupStatus('error');
+      setCustomerLookupError(
+        lookupError?.message || 'Unable to look up this customer.',
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (isPhoneValid) {
+      lookupCustomer(customerPhone);
+    }
+  }, [customerPhone, isPhoneValid]);
+
+  useEffect(() => {
+    if (
+      checkoutStep !== CHECKOUT_STEPS.CART &&
+      checkoutStep !== CHECKOUT_STEPS.SUCCESS &&
+      itemCount === 0
+    ) {
+      setCheckoutStep(CHECKOUT_STEPS.CART);
+      setOrderError('');
+    }
+  }, [checkoutStep, itemCount]);
+
+  useEffect(() => {
+    if (
+      checkoutStep !== CHECKOUT_STEPS.CART &&
+      !isLoadingMenu &&
+      hasInvalidCartItem
+    ) {
+      setCartError(
+        'An item is unavailable or exceeds current stock. Update the order before continuing.',
+      );
+      setCheckoutStep(CHECKOUT_STEPS.CART);
+    }
+  }, [checkoutStep, hasInvalidCartItem, isLoadingMenu]);
+
   const changeQuantity = (item, change) => {
+    setCartError('');
     setCart(current => {
       const nextQuantity = Math.max(
         0,
@@ -201,10 +317,132 @@ const PosScreen = () => {
   };
 
   const handleCheckout = () => {
-    Alert.alert('Order ready', `Collect ₹${subtotal} and confirm the order.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Confirm order', onPress: () => setCart({}) },
-    ]);
+    if (!itemCount) return;
+
+    if (hasInvalidCartItem) {
+      setCartError(
+        'An item is unavailable or exceeds current stock. Update the order before continuing.',
+      );
+      return;
+    }
+
+    setCartError('');
+    setOrderError('');
+    orderRequestKeyRef.current = null;
+    setCheckoutStep(CHECKOUT_STEPS.CUSTOMER);
+  };
+
+  const handlePhoneDigit = digit => {
+    if (customerPhone.length >= 10) return;
+    resetCustomerLookup();
+    setCustomerName('');
+    setCustomerPhone(current => `${current}${digit}`.slice(0, 10));
+  };
+
+  const handlePhoneBackspace = () => {
+    resetCustomerLookup();
+    setCustomerName('');
+    setCustomerPhone(current => current.slice(0, -1));
+  };
+
+  const handleClearPhone = () => {
+    resetCustomerLookup();
+    setCustomerPhone('');
+    setCustomerName('');
+  };
+
+  const handleRetryCustomerLookup = () => {
+    lastLookupPhoneRef.current = null;
+    lookupCustomer(customerPhone);
+  };
+
+  const handleContinueToSummary = () => {
+    if (!canContinueCustomer) return;
+    setOrderError('');
+    setCheckoutStep(CHECKOUT_STEPS.SUMMARY);
+  };
+
+  const handlePlaceOrder = async () => {
+    if (isPlacingOrder) return;
+
+    if (hasInvalidCartItem) {
+      setCartError(
+        'An item is unavailable or exceeds current stock. Update the order before continuing.',
+      );
+      setCheckoutStep(CHECKOUT_STEPS.CART);
+      return;
+    }
+
+    setIsPlacingOrder(true);
+    setOrderError('');
+
+    try {
+      let customer = resolvedCustomer;
+
+      if (!customer) {
+        const createdCustomer = await createMockCustomer({
+          phone: customerPhone,
+          name: customerName,
+        });
+        customer = {
+          id: createdCustomer.customer_id,
+          name: createdCustomer.name,
+          phone: createdCustomer.phone,
+        };
+        setResolvedCustomer(customer);
+      }
+
+      if (!orderRequestKeyRef.current) {
+        orderRequestKeyRef.current = `${customerPhone}-${Date.now()}`;
+      }
+
+      const payload = {
+        customer_id: customer.id,
+        location_id: user?.location?.locationId || user?.locationId || null,
+        payment_method: user?.paymentMode || user?.payment_mode || 'cash',
+        total_price: subtotal,
+        items: cartItems.map(item => ({
+          daily_menu_item_id: item.dailyMenuItemId,
+          tuck_shop_item_id: item.tuckShopItemId,
+          qty: item.quantity,
+          price: item.price,
+          total_price: item.price * item.quantity,
+        })),
+      };
+      const order = await createMockPosOrder({
+        requestKey: orderRequestKeyRef.current,
+        payload,
+      });
+
+      setCreatedOrder(order);
+      setCart({});
+      setCustomerPhone('');
+      setCustomerName('');
+      resetCustomerLookup();
+      setCheckoutStep(CHECKOUT_STEPS.SUCCESS);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ACTIVE_ORDERS_QUERY_KEY }),
+        refetchMenu(),
+      ]);
+    } catch (placementError) {
+      setOrderError(
+        placementError?.message || 'Unable to place the order. Try again.',
+      );
+    } finally {
+      setIsPlacingOrder(false);
+    }
+  };
+
+  const handleStartNewOrder = () => {
+    setCart({});
+    setCustomerPhone('');
+    setCustomerName('');
+    resetCustomerLookup();
+    setOrderError('');
+    setCreatedOrder(null);
+    orderRequestKeyRef.current = null;
+    setCheckoutStep(CHECKOUT_STEPS.CART);
   };
 
   const renderProduct = ({ item }) => {
@@ -443,120 +681,184 @@ const PosScreen = () => {
             <View
               style={[styles.cartCard, shouldStack && styles.cartCardStacked]}
             >
-              <View style={styles.cartHeader}>
-                <View>
-                  <Text style={styles.cartTitle}>Current order</Text>
-                  <Text style={styles.cartSubtitle}>
-                    {itemCount
-                      ? `${itemCount} items selected`
-                      : 'Add items from the menu'}
-                  </Text>
-                </View>
-                <View style={styles.cartHeaderActions}>
-                  {itemCount > 0 && (
-                    <TouchableOpacity onPress={() => setCart({})}>
-                      <Text style={styles.clearText}>Clear</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel="Collapse current order"
-                    activeOpacity={0.75}
-                    hitSlop={6}
-                    onPress={() => setCartCollapsed(true)}
-                    style={styles.cartCollapseButton}
+              {checkoutStep === CHECKOUT_STEPS.CART ? (
+                <>
+                  <View style={styles.cartHeader}>
+                    <View>
+                      <Text style={styles.cartTitle}>Current order</Text>
+                      <Text style={styles.cartSubtitle}>
+                        {itemCount
+                          ? `${itemCount} items selected`
+                          : 'Add items from the menu'}
+                      </Text>
+                    </View>
+                    <View style={styles.cartHeaderActions}>
+                      {itemCount > 0 && (
+                        <TouchableOpacity onPress={() => setCart({})}>
+                          <Text style={styles.clearText}>Clear</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel="Collapse current order"
+                        activeOpacity={0.75}
+                        hitSlop={6}
+                        onPress={() => setCartCollapsed(true)}
+                        style={styles.cartCollapseButton}
+                      >
+                        <Ionicons
+                          name={
+                            shouldStack ? 'chevron-down' : 'chevron-forward'
+                          }
+                          size={19}
+                          color={theme.colors.textPrimary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <ScrollView
+                    style={styles.cartList}
+                    contentContainerStyle={
+                      !cartItems.length && styles.emptyCart
+                    }
                   >
+                    {!cartItems.length ? (
+                      <>
+                        <View style={styles.emptyCartIcon}>
+                          <Ionicons
+                            name="basket-outline"
+                            size={30}
+                            color={theme.colors.textMuted}
+                          />
+                        </View>
+                        <Text style={styles.emptyCartText}>
+                          Your order is empty
+                        </Text>
+                      </>
+                    ) : (
+                      cartItems.map(item => (
+                        <View key={item.id} style={styles.cartItem}>
+                          <View style={styles.cartItemCopy}>
+                            <Text style={styles.cartItemName}>{item.name}</Text>
+                            <Text style={styles.cartItemPrice}>
+                              ₹{item.price * item.quantity}
+                            </Text>
+                          </View>
+                          <View style={styles.stepper}>
+                            <TouchableOpacity
+                              style={styles.stepButton}
+                              onPress={() => changeQuantity(item, -1)}
+                            >
+                              <Ionicons
+                                name="remove"
+                                size={17}
+                                color={theme.colors.textPrimary}
+                              />
+                            </TouchableOpacity>
+                            <Text style={styles.stepQuantity}>
+                              {item.quantity}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.stepButton}
+                              onPress={() => changeQuantity(item, 1)}
+                            >
+                              <Ionicons
+                                name="add"
+                                size={17}
+                                color={theme.colors.textPrimary}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </ScrollView>
+                  {cartError ? (
+                    <View style={styles.cartErrorBox}>
+                      <Ionicons
+                        name="alert-circle-outline"
+                        size={18}
+                        color={theme.colors.error}
+                      />
+                      <Text style={styles.cartErrorText}>{cartError}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Total</Text>
+                    <Text style={styles.totalValue}>₹{subtotal}</Text>
+                  </View>
+                  <TouchableOpacity
+                    disabled={!itemCount}
+                    onPress={handleCheckout}
+                    style={[
+                      styles.checkoutButton,
+                      !itemCount && styles.checkoutButtonDisabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.checkoutText,
+                        !itemCount && styles.checkoutTextDisabled,
+                      ]}
+                    >
+                      Place order
+                    </Text>
                     <Ionicons
-                      name={shouldStack ? 'chevron-down' : 'chevron-forward'}
+                      name="arrow-forward"
                       size={19}
-                      color={theme.colors.textPrimary}
+                      color={
+                        itemCount
+                          ? theme.colors.textPrimary
+                          : theme.colors.textMuted
+                      }
                     />
                   </TouchableOpacity>
-                </View>
-              </View>
-              <ScrollView
-                style={styles.cartList}
-                contentContainerStyle={!cartItems.length && styles.emptyCart}
-              >
-                {!cartItems.length ? (
-                  <>
-                    <View style={styles.emptyCartIcon}>
-                      <Ionicons
-                        name="basket-outline"
-                        size={30}
-                        color={theme.colors.textMuted}
-                      />
-                    </View>
-                    <Text style={styles.emptyCartText}>
-                      Your order is empty
-                    </Text>
-                  </>
-                ) : (
-                  cartItems.map(item => (
-                    <View key={item.id} style={styles.cartItem}>
-                      <View style={styles.cartItemCopy}>
-                        <Text style={styles.cartItemName}>{item.name}</Text>
-                        <Text style={styles.cartItemPrice}>
-                          ₹{item.price * item.quantity}
-                        </Text>
-                      </View>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepButton}
-                          onPress={() => changeQuantity(item, -1)}
-                        >
-                          <Ionicons
-                            name="remove"
-                            size={17}
-                            color={theme.colors.textPrimary}
-                          />
-                        </TouchableOpacity>
-                        <Text style={styles.stepQuantity}>{item.quantity}</Text>
-                        <TouchableOpacity
-                          style={styles.stepButton}
-                          onPress={() => changeQuantity(item, 1)}
-                        >
-                          <Ionicons
-                            name="add"
-                            size={17}
-                            color={theme.colors.textPrimary}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>₹{subtotal}</Text>
-              </View>
-              <TouchableOpacity
-                disabled={!itemCount}
-                onPress={handleCheckout}
-                style={[
-                  styles.checkoutButton,
-                  !itemCount && styles.checkoutButtonDisabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.checkoutText,
-                    !itemCount && styles.checkoutTextDisabled,
-                  ]}
-                >
-                  Place order
-                </Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={19}
-                  color={
-                    itemCount
-                      ? theme.colors.textPrimary
-                      : theme.colors.textMuted
-                  }
+                </>
+              ) : checkoutStep === CHECKOUT_STEPS.CUSTOMER ? (
+                <CustomerDetailsStep
+                  phone={customerPhone}
+                  customerName={customerName}
+                  resolvedCustomer={resolvedCustomer}
+                  lookupStatus={customerLookupStatus}
+                  lookupError={customerLookupError}
+                  canContinue={canContinueCustomer}
+                  onDigit={handlePhoneDigit}
+                  onBackspace={handlePhoneBackspace}
+                  onClearPhone={handleClearPhone}
+                  onNameChange={setCustomerName}
+                  onRetryLookup={handleRetryCustomerLookup}
+                  onBack={() => setCheckoutStep(CHECKOUT_STEPS.CART)}
+                  onContinue={handleContinueToSummary}
+                  onCollapse={() => setCartCollapsed(true)}
                 />
-              </TouchableOpacity>
+              ) : checkoutStep === CHECKOUT_STEPS.SUMMARY ? (
+                <OrderSummaryStep
+                  customer={{
+                    id: resolvedCustomer?.id,
+                    name: resolvedCustomer?.name || customerName.trim(),
+                    phone: customerPhone,
+                  }}
+                  isExistingCustomer={isExistingCustomer}
+                  items={cartItems}
+                  totalQuantity={itemCount}
+                  totalAmount={subtotal}
+                  isPlacingOrder={isPlacingOrder}
+                  orderError={orderError}
+                  onBack={() => setCheckoutStep(CHECKOUT_STEPS.CUSTOMER)}
+                  onPlaceOrder={handlePlaceOrder}
+                  onCollapse={() => setCartCollapsed(true)}
+                />
+              ) : (
+                <OrderSuccessStep
+                  orderNumber={
+                    createdOrder?.tuck_shop_order_id ||
+                    createdOrder?.order_id ||
+                    createdOrder?.id
+                  }
+                  onNewOrder={handleStartNewOrder}
+                  onCollapse={() => setCartCollapsed(true)}
+                />
+              )}
             </View>
           )}
 
@@ -826,6 +1128,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   clearText: { color: theme.colors.error, fontSize: 12, fontWeight: '700' },
+  cartErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: '#F0C5C0',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#FEF2F2',
+    padding: theme.spacing.md,
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+  },
+  cartErrorText: {
+    flex: 1,
+    color: theme.colors.error,
+    fontSize: 10,
+    lineHeight: 15,
+  },
   cartList: { flex: 1 },
   emptyCart: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
   emptyCartIcon: {
