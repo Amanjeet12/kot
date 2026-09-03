@@ -267,20 +267,24 @@ const PosScreen = () => {
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel="Show previous categories"
+                  activeOpacity={0.8}
+                  hitSlop={6}
                   onPress={() => scrollCategories(-1)}
                   style={[styles.categoryArrow, styles.categoryArrowLeft]}
                 >
-                  <Ionicons name="chevron-back" size={18} color={theme.colors.textPrimary} />
+                  <Ionicons name="chevron-back" size={16} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
               )}
               {canScrollCategoriesRight && (
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel="Show more categories"
+                  activeOpacity={0.8}
+                  hitSlop={6}
                   onPress={() => scrollCategories(1)}
                   style={[styles.categoryArrow, styles.categoryArrowRight]}
                 >
-                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -364,9 +368,9 @@ const styles = StyleSheet.create({
   categoryScroller: { position: 'relative', marginBottom: theme.spacing.md },
   categoryList: { flexGrow: 0, flexShrink: 0 },
   categoryRow: { gap: theme.spacing.sm, paddingTop: theme.spacing.md },
-  categoryArrow: { position: 'absolute', top: theme.spacing.md, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, zIndex: 2 },
-  categoryArrowLeft: { left: 0 },
-  categoryArrowRight: { right: 0 },
+  categoryArrow: { position: 'absolute', top: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.round, backgroundColor: theme.colors.surface, zIndex: 2, ...theme.shadows.small },
+  categoryArrowLeft: { left: 4 },
+  categoryArrowRight: { right: 4 },
   category: { height: 40, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceSecondary, paddingHorizontal: theme.spacing.lg },
   categoryActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
   categoryText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: '600' },
