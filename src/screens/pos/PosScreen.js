@@ -4,11 +4,14 @@ import {
   Alert,
   FlatList,
   Image,
+  LayoutAnimation,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,11 +23,17 @@ import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
 import { useTuckShopCategories } from '../../hooks/queries/useTuckShopCategories';
 import OrdersHeader from '../orders/components/OrdersHeader';
 
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
+
 const PosScreen = () => {
   const { isMobile, isPortrait, isLargeTablet } = useResponsive();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState({});
+  const [isCartCollapsed, setIsCartCollapsed] = useState(false);
+  const [catalogueWidth, setCatalogueWidth] = useState(0);
   const [failedImages, setFailedImages] = useState({});
   const [categoryScroll, setCategoryScroll] = useState({
     contentWidth: 0,
@@ -33,7 +42,24 @@ const PosScreen = () => {
   });
   const categoryListRef = useRef(null);
   const shouldStack = isMobile || isPortrait;
-  const productColumns = isMobile ? 2 : 3;
+  const productColumns = useMemo(() => {
+    const fallbackColumns = isMobile ? 2 : isCartCollapsed ? 4 : 3;
+
+    if (!catalogueWidth) {
+      return fallbackColumns;
+    }
+
+    const horizontalPadding = theme.spacing.lg * 2;
+    const availableWidth = Math.max(0, catalogueWidth - horizontalPadding);
+    const minimumCardWidth = isMobile ? 140 : 128;
+    const gap = theme.spacing.md;
+    const columnsThatFit = Math.floor(
+      (availableWidth + gap) / (minimumCardWidth + gap),
+    );
+    const maximumColumns = isMobile ? 2 : isCartCollapsed ? 5 : 3;
+
+    return Math.max(1, Math.min(maximumColumns, columnsThatFit || 1));
+  }, [catalogueWidth, isCartCollapsed, isMobile]);
 
   const {
     data: menuResponse,
@@ -80,32 +106,43 @@ const PosScreen = () => {
 
     return [
       'All',
-      ...new Set(rawCategories
-        .map(item =>
-          item.categoryName ??
-          item.category_name ??
-          item.name ??
-          item.category,
-        )
-        .filter(Boolean)),
+      ...new Set(
+        rawCategories
+          .map(
+            item =>
+              item.categoryName ??
+              item.category_name ??
+              item.name ??
+              item.category,
+          )
+          .filter(Boolean),
+      ),
     ];
   }, [categoriesResponse]);
 
   const products = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return menuItems.filter(item =>
-      item.enabled && item.stock > 0 &&
-      (category === 'All' || item.category === category) &&
-      (!term || item.name.toLowerCase().includes(term)),
+    return menuItems.filter(
+      item =>
+        item.enabled &&
+        item.stock > 0 &&
+        (category === 'All' || item.category === category) &&
+        (!term || item.name.toLowerCase().includes(term)),
     );
   }, [category, menuItems, search]);
 
   const cartItems = useMemo(
-    () => menuItems.filter(item => cart[item.id]).map(item => ({ ...item, quantity: cart[item.id] })),
+    () =>
+      menuItems
+        .filter(item => cart[item.id])
+        .map(item => ({ ...item, quantity: cart[item.id] })),
     [cart, menuItems],
   );
   const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0,
+  );
   const canScrollCategoriesLeft = categoryScroll.x > 4;
   const canScrollCategoriesRight =
     categoryScroll.contentWidth > categoryScroll.viewportWidth &&
@@ -137,9 +174,25 @@ const PosScreen = () => {
     setCategoryScroll(current => ({ ...current, x }));
   };
 
+  const handleCatalogueLayout = event => {
+    const nextWidth = event.nativeEvent?.layout?.width || 0;
+
+    setCatalogueWidth(currentWidth =>
+      Math.abs(currentWidth - nextWidth) > 1 ? nextWidth : currentWidth,
+    );
+  };
+
+  const setCartCollapsed = collapsed => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsCartCollapsed(collapsed);
+  };
+
   const changeQuantity = (item, change) => {
     setCart(current => {
-      const nextQuantity = Math.max(0, Math.min(item.stock, (current[item.id] || 0) + change));
+      const nextQuantity = Math.max(
+        0,
+        Math.min(item.stock, (current[item.id] || 0) + change),
+      );
       const next = { ...current };
       if (nextQuantity === 0) delete next[item.id];
       else next[item.id] = nextQuantity;
@@ -160,47 +213,71 @@ const PosScreen = () => {
       <View
         style={[
           styles.productWrapper,
-          productColumns === 2
-            ? styles.productWrapperTwoColumns
-            : styles.productWrapperThreeColumns,
+          { flex: 1 / productColumns },
+          productColumns === 1 && styles.productWrapperSingle,
         ]}
       >
-      <TouchableOpacity style={styles.productCard} activeOpacity={0.75} onPress={() => changeQuantity(item, 1)}>
-        <View style={styles.productIcon}>
-          {item.image && !failedImages[item.id] ? (
-            <Image
-              source={{ uri: item.image }}
-              resizeMode="cover"
-              onError={() =>
-                setFailedImages(current => ({ ...current, [item.id]: true }))
-              }
-              style={styles.productImage}
-            />
-          ) : (
-            <Ionicons
-              name={item.icon}
-              size={25}
-              color={theme.colors.textPrimary}
-            />
-          )}
-        </View>
-        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.productMeta}>{item.category} · {item.stock} left</Text>
-        <View style={styles.productFooter}>
-          <Text style={styles.price}>₹{item.price}</Text>
-          <View style={[styles.addButton, quantity > 0 && styles.addButtonActive]}>
-            <Ionicons name={quantity ? 'checkmark' : 'add'} size={18} color={theme.colors.textPrimary} />
-            {quantity > 0 && <Text style={styles.addQuantity}>{quantity}</Text>}
+        <TouchableOpacity
+          style={styles.productCard}
+          activeOpacity={0.75}
+          onPress={() => changeQuantity(item, 1)}
+        >
+          <View style={styles.productIcon}>
+            {item.image && !failedImages[item.id] ? (
+              <Image
+                source={{ uri: item.image }}
+                resizeMode="cover"
+                onError={() =>
+                  setFailedImages(current => ({ ...current, [item.id]: true }))
+                }
+                style={styles.productImage}
+              />
+            ) : (
+              <Ionicons
+                name={item.icon}
+                size={25}
+                color={theme.colors.textPrimary}
+              />
+            )}
           </View>
-        </View>
-      </TouchableOpacity>
+          <Text style={styles.productName} numberOfLines={2}>
+            {item.name}
+          </Text>
+          <Text style={styles.productCategory} numberOfLines={1}>
+            {item.category}
+          </Text>
+          <Text style={styles.productAvailability} numberOfLines={1}>
+            {item.stock} available
+          </Text>
+          <View style={styles.productFooter}>
+            <Text style={styles.price}>₹{item.price}</Text>
+            <View
+              style={[styles.addButton, quantity > 0 && styles.addButtonActive]}
+            >
+              <Ionicons
+                name={quantity ? 'checkmark' : 'add'}
+                size={18}
+                color={theme.colors.textPrimary}
+              />
+              {quantity > 0 && (
+                <Text style={styles.addQuantity}>{quantity}</Text>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={[styles.container, isMobile && styles.containerMobile, isLargeTablet && styles.containerLarge]}>
+      <View
+        style={[
+          styles.container,
+          isMobile && styles.containerMobile,
+          isLargeTablet && styles.containerLarge,
+        ]}
+      >
         <OrdersHeader
           title="POS"
           subtitle="Create a walk-in order. Select items and collect payment."
@@ -214,9 +291,13 @@ const PosScreen = () => {
         />
 
         <View style={[styles.content, shouldStack && styles.contentStacked]}>
-          <View style={styles.catalogueCard}>
+          <View style={styles.catalogueCard} onLayout={handleCatalogueLayout}>
             <View style={styles.searchBox}>
-              <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
+              <Ionicons
+                name="search-outline"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -258,8 +339,22 @@ const PosScreen = () => {
                 scrollEventThrottle={16}
               >
                 {categories.map(item => (
-                  <TouchableOpacity key={item} onPress={() => setCategory(item)} style={[styles.category, category === item && styles.categoryActive]}>
-                    <Text style={[styles.categoryText, category === item && styles.categoryTextActive]}>{item}</Text>
+                  <TouchableOpacity
+                    key={item}
+                    onPress={() => setCategory(item)}
+                    style={[
+                      styles.category,
+                      category === item && styles.categoryActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        category === item && styles.categoryTextActive,
+                      ]}
+                    >
+                      {item}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -272,7 +367,11 @@ const PosScreen = () => {
                   onPress={() => scrollCategories(-1)}
                   style={[styles.categoryArrow, styles.categoryArrowLeft]}
                 >
-                  <Ionicons name="chevron-back" size={16} color={theme.colors.textPrimary} />
+                  <Ionicons
+                    name="chevron-back"
+                    size={16}
+                    color={theme.colors.textPrimary}
+                  />
                 </TouchableOpacity>
               )}
               {canScrollCategoriesRight && (
@@ -284,7 +383,11 @@ const PosScreen = () => {
                   onPress={() => scrollCategories(1)}
                   style={[styles.categoryArrow, styles.categoryArrowRight]}
                 >
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textPrimary} />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={theme.colors.textPrimary}
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -294,58 +397,202 @@ const PosScreen = () => {
               numColumns={productColumns}
               keyExtractor={item => String(item.id)}
               renderItem={renderProduct}
-              columnWrapperStyle={styles.productRow}
+              columnWrapperStyle={
+                productColumns > 1 ? styles.productRow : undefined
+              }
               contentContainerStyle={styles.productList}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 isLoadingMenu ? (
                   <View style={styles.feedbackState}>
-                    <ActivityIndicator size="large" color={theme.colors.primaryDark} />
-                    <Text style={styles.emptyText}>Loading today's menu...</Text>
+                    <ActivityIndicator
+                      size="large"
+                      color={theme.colors.primaryDark}
+                    />
+                    <Text style={styles.emptyText}>
+                      Loading today's menu...
+                    </Text>
                   </View>
                 ) : menuError ? (
                   <View style={styles.feedbackState}>
-                    <Ionicons name="cloud-offline-outline" size={30} color={theme.colors.textMuted} />
-                    <Text style={styles.emptyText}>Unable to load the menu.</Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={() => refetchMenu()}>
+                    <Ionicons
+                      name="cloud-offline-outline"
+                      size={30}
+                      color={theme.colors.textMuted}
+                    />
+                    <Text style={styles.emptyText}>
+                      Unable to load the menu.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.retryButton}
+                      onPress={() => refetchMenu()}
+                    >
                       <Text style={styles.retryText}>Try again</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <Text style={styles.emptyText}>No available items found.</Text>
+                  <Text style={styles.emptyText}>
+                    No available items found.
+                  </Text>
                 )
               }
             />
           </View>
 
-          <View style={[styles.cartCard, shouldStack && styles.cartCardStacked]}>
-            <View style={styles.cartHeader}>
-              <View>
-                <Text style={styles.cartTitle}>Current order</Text>
-                <Text style={styles.cartSubtitle}>{itemCount ? `${itemCount} items selected` : 'Add items from the menu'}</Text>
-              </View>
-              {itemCount > 0 && <TouchableOpacity onPress={() => setCart({})}><Text style={styles.clearText}>Clear</Text></TouchableOpacity>}
-            </View>
-            <ScrollView style={styles.cartList} contentContainerStyle={!cartItems.length && styles.emptyCart}>
-              {!cartItems.length ? (
-                <><View style={styles.emptyCartIcon}><Ionicons name="basket-outline" size={30} color={theme.colors.textMuted} /></View><Text style={styles.emptyCartText}>Your order is empty</Text></>
-              ) : cartItems.map(item => (
-                <View key={item.id} style={styles.cartItem}>
-                  <View style={styles.cartItemCopy}><Text style={styles.cartItemName}>{item.name}</Text><Text style={styles.cartItemPrice}>₹{item.price * item.quantity}</Text></View>
-                  <View style={styles.stepper}>
-                    <TouchableOpacity style={styles.stepButton} onPress={() => changeQuantity(item, -1)}><Ionicons name="remove" size={17} color={theme.colors.textPrimary} /></TouchableOpacity>
-                    <Text style={styles.stepQuantity}>{item.quantity}</Text>
-                    <TouchableOpacity style={styles.stepButton} onPress={() => changeQuantity(item, 1)}><Ionicons name="add" size={17} color={theme.colors.textPrimary} /></TouchableOpacity>
-                  </View>
+          {!isCartCollapsed && (
+            <View
+              style={[styles.cartCard, shouldStack && styles.cartCardStacked]}
+            >
+              <View style={styles.cartHeader}>
+                <View>
+                  <Text style={styles.cartTitle}>Current order</Text>
+                  <Text style={styles.cartSubtitle}>
+                    {itemCount
+                      ? `${itemCount} items selected`
+                      : 'Add items from the menu'}
+                  </Text>
                 </View>
-              ))}
-            </ScrollView>
-            <View style={styles.totalRow}><Text style={styles.totalLabel}>Total</Text><Text style={styles.totalValue}>₹{subtotal}</Text></View>
-            <TouchableOpacity disabled={!itemCount} onPress={handleCheckout} style={[styles.checkoutButton, !itemCount && styles.checkoutButtonDisabled]}>
-              <Text style={[styles.checkoutText, !itemCount && styles.checkoutTextDisabled]}>Place order</Text>
-              <Ionicons name="arrow-forward" size={19} color={itemCount ? theme.colors.textPrimary : theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
+                <View style={styles.cartHeaderActions}>
+                  {itemCount > 0 && (
+                    <TouchableOpacity onPress={() => setCart({})}>
+                      <Text style={styles.clearText}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Collapse current order"
+                    activeOpacity={0.75}
+                    hitSlop={6}
+                    onPress={() => setCartCollapsed(true)}
+                    style={styles.cartCollapseButton}
+                  >
+                    <Ionicons
+                      name={shouldStack ? 'chevron-down' : 'chevron-forward'}
+                      size={19}
+                      color={theme.colors.textPrimary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <ScrollView
+                style={styles.cartList}
+                contentContainerStyle={!cartItems.length && styles.emptyCart}
+              >
+                {!cartItems.length ? (
+                  <>
+                    <View style={styles.emptyCartIcon}>
+                      <Ionicons
+                        name="basket-outline"
+                        size={30}
+                        color={theme.colors.textMuted}
+                      />
+                    </View>
+                    <Text style={styles.emptyCartText}>
+                      Your order is empty
+                    </Text>
+                  </>
+                ) : (
+                  cartItems.map(item => (
+                    <View key={item.id} style={styles.cartItem}>
+                      <View style={styles.cartItemCopy}>
+                        <Text style={styles.cartItemName}>{item.name}</Text>
+                        <Text style={styles.cartItemPrice}>
+                          ₹{item.price * item.quantity}
+                        </Text>
+                      </View>
+                      <View style={styles.stepper}>
+                        <TouchableOpacity
+                          style={styles.stepButton}
+                          onPress={() => changeQuantity(item, -1)}
+                        >
+                          <Ionicons
+                            name="remove"
+                            size={17}
+                            color={theme.colors.textPrimary}
+                          />
+                        </TouchableOpacity>
+                        <Text style={styles.stepQuantity}>{item.quantity}</Text>
+                        <TouchableOpacity
+                          style={styles.stepButton}
+                          onPress={() => changeQuantity(item, 1)}
+                        >
+                          <Ionicons
+                            name="add"
+                            size={17}
+                            color={theme.colors.textPrimary}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalValue}>₹{subtotal}</Text>
+              </View>
+              <TouchableOpacity
+                disabled={!itemCount}
+                onPress={handleCheckout}
+                style={[
+                  styles.checkoutButton,
+                  !itemCount && styles.checkoutButtonDisabled,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.checkoutText,
+                    !itemCount && styles.checkoutTextDisabled,
+                  ]}
+                >
+                  Place order
+                </Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={19}
+                  color={
+                    itemCount
+                      ? theme.colors.textPrimary
+                      : theme.colors.textMuted
+                  }
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isCartCollapsed && (
+            <View
+              style={[
+                styles.cartExpandRail,
+                shouldStack && styles.cartExpandRailStacked,
+              ]}
+            >
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Expand current order"
+                activeOpacity={0.8}
+                onPress={() => setCartCollapsed(false)}
+                style={[
+                  styles.cartExpandButton,
+                  shouldStack && styles.cartExpandButtonStacked,
+                ]}
+              >
+                <Ionicons
+                  name="basket-outline"
+                  size={20}
+                  color={theme.colors.textPrimary}
+                />
+                <View style={styles.cartCountBadge}>
+                  <Text style={styles.cartCountText}>{itemCount}</Text>
+                </View>
+                <Ionicons
+                  name={shouldStack ? 'chevron-up' : 'chevron-back'}
+                  size={18}
+                  color={theme.colors.textPrimary}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -356,66 +603,359 @@ export default PosScreen;
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.colors.background },
-  container: { flex: 1, paddingTop: theme.spacing.lg, paddingHorizontal: theme.spacing.xl, paddingBottom: theme.spacing.xl },
-  containerMobile: { paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md },
+  container: {
+    flex: 1,
+    paddingTop: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.xl,
+  },
+  containerMobile: {
+    paddingTop: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+  },
   containerLarge: { paddingHorizontal: theme.spacing.xxl },
   content: { flex: 1, flexDirection: 'row', gap: theme.spacing.lg },
   contentStacked: { flexDirection: 'column' },
-  catalogueCard: { flex: 1.65, minHeight: 250, borderWidth: 1, borderColor: '#DADDD6', borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, padding: theme.spacing.lg, overflow: 'hidden' },
-  searchBox: { height: 48, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.xl, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.md },
-  searchInput: { flex: 1, color: theme.colors.textPrimary, fontSize: 14, marginLeft: theme.spacing.sm, paddingVertical: 0 },
-  clearSearchButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  catalogueCard: {
+    flex: 1.65,
+    minHeight: 250,
+    borderWidth: 1,
+    borderColor: '#DADDD6',
+    borderRadius: theme.radius.card,
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.lg,
+    overflow: 'hidden',
+  },
+  searchBox: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: theme.spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    marginLeft: theme.spacing.sm,
+    paddingVertical: 0,
+  },
+  clearSearchButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   categoryScroller: { position: 'relative', marginBottom: theme.spacing.md },
   categoryList: { flexGrow: 0, flexShrink: 0 },
   categoryRow: { gap: theme.spacing.sm, paddingTop: theme.spacing.md },
-  categoryArrow: { position: 'absolute', top: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.round, backgroundColor: theme.colors.surface, zIndex: 2, ...theme.shadows.small },
+  categoryArrow: {
+    position: 'absolute',
+    top: 16,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.round,
+    backgroundColor: theme.colors.surface,
+    zIndex: 2,
+    ...theme.shadows.small,
+  },
   categoryArrowLeft: { left: 4 },
   categoryArrowRight: { right: 4 },
-  category: { height: 40, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceSecondary, paddingHorizontal: theme.spacing.lg },
-  categoryActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
-  categoryText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  category: {
+    height: 40,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surfaceSecondary,
+    paddingHorizontal: theme.spacing.lg,
+  },
+  categoryActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+  },
+  categoryText: {
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   categoryTextActive: { color: theme.colors.textPrimary, fontWeight: '700' },
   productList: { flexGrow: 1, paddingBottom: theme.spacing.sm },
   productRow: { gap: theme.spacing.md, marginBottom: theme.spacing.md },
   productWrapper: { minWidth: 0 },
-  productWrapperTwoColumns: { flex: 0.5 },
-  productWrapperThreeColumns: { flex: 0.333333 },
-  productCard: { width: '100%', minHeight: 154, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.xxl, backgroundColor: theme.colors.surface, padding: theme.spacing.md },
-  productIcon: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.xl, backgroundColor: theme.colors.primaryLight, overflow: 'hidden' },
+  productWrapperSingle: { marginBottom: theme.spacing.md },
+  productCard: {
+    width: '100%',
+    height: 200,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.xxl,
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.md,
+  },
+  productIcon: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.primaryLight,
+    overflow: 'hidden',
+  },
   productImage: { width: '100%', height: '100%' },
-  productName: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', marginTop: 10 },
-  productMeta: { color: theme.colors.textSecondary, fontSize: 10, marginTop: 4 },
-  productFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 8 },
+  productName: {
+    height: 36,
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    marginTop: 10,
+  },
+  productCategory: {
+    height: 14,
+    color: theme.colors.textSecondary,
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 4,
+  },
+  productAvailability: {
+    height: 14,
+    color: theme.colors.textPrimary,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  productFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 'auto',
+    paddingTop: 8,
+  },
   price: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: '800' },
-  addButton: { minWidth: 32, height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.colors.surfaceSecondary, paddingHorizontal: 7 },
+  addButton: {
+    minWidth: 32,
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceSecondary,
+    paddingHorizontal: 7,
+  },
   addButtonActive: { backgroundColor: theme.colors.primary },
-  addQuantity: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '800', marginLeft: 3 },
-  feedbackState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50 },
-  emptyText: { color: theme.colors.textSecondary, textAlign: 'center', marginTop: theme.spacing.md },
-  retryButton: { marginTop: theme.spacing.md, borderRadius: theme.radius.lg, backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm },
-  retryText: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '700' },
-  cartCard: { flex: 1, borderWidth: 1, borderColor: '#DADDD6', borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, overflow: 'hidden' },
+  addQuantity: {
+    color: theme.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 3,
+  },
+  feedbackState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 50,
+  },
+  emptyText: {
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
+  },
+  retryButton: {
+    marginTop: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+  },
+  retryText: {
+    color: theme.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cartCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#DADDD6',
+    borderRadius: theme.radius.card,
+    backgroundColor: theme.colors.surface,
+    overflow: 'hidden',
+  },
   cartCardStacked: { flex: 1, minHeight: 280 },
-  cartHeader: { minHeight: 72, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingHorizontal: theme.spacing.lg },
-  cartTitle: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: '700' },
-  cartSubtitle: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 4 },
+  cartHeader: {
+    minHeight: 72,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.lg,
+  },
+  cartHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginLeft: theme.spacing.sm,
+  },
+  cartCollapseButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  cartTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  cartSubtitle: {
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    marginTop: 4,
+  },
   clearText: { color: theme.colors.error, fontSize: 12, fontWeight: '700' },
   cartList: { flex: 1 },
   emptyCart: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyCartIcon: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center', borderRadius: 31, backgroundColor: theme.colors.surfaceSecondary },
-  emptyCartText: { color: theme.colors.textSecondary, fontSize: 12, marginTop: theme.spacing.md },
-  cartItem: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: theme.colors.border, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm },
+  emptyCartIcon: {
+    width: 62,
+    height: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 31,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  emptyCartText: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    marginTop: theme.spacing.md,
+  },
+  cartItem: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+  },
   cartItemCopy: { flex: 1, paddingRight: theme.spacing.sm },
-  cartItemName: { color: theme.colors.textPrimary, fontSize: 13, fontWeight: '700' },
-  cartItemPrice: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 4 },
+  cartItemName: {
+    color: theme.colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cartItemPrice: {
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    marginTop: 4,
+  },
   stepper: { flexDirection: 'row', alignItems: 'center' },
-  stepButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: theme.colors.surfaceSecondary },
-  stepQuantity: { minWidth: 28, color: theme.colors.textPrimary, fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: theme.colors.border, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg },
-  totalLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700' },
-  totalValue: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: '800' },
-  checkoutButton: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: theme.radius.xl, backgroundColor: theme.colors.primary, margin: theme.spacing.lg },
+  stepButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: theme.colors.surfaceSecondary,
+  },
+  stepQuantity: {
+    minWidth: 28,
+    color: theme.colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+  },
+  totalLabel: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  totalValue: {
+    color: theme.colors.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  checkoutButton: {
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.primary,
+    margin: theme.spacing.lg,
+  },
   checkoutButtonDisabled: { backgroundColor: theme.colors.surfaceSecondary },
-  checkoutText: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '800' },
+  checkoutText: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   checkoutTextDisabled: { color: theme.colors.textMuted },
+  cartExpandRail: {
+    width: 52,
+    flexShrink: 0,
+    alignItems: 'center',
+    paddingTop: theme.spacing.sm,
+  },
+  cartExpandRailStacked: {
+    width: '100%',
+    height: 48,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingTop: 0,
+  },
+  cartExpandButton: {
+    width: 48,
+    minHeight: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.borderDark,
+    borderRadius: theme.radius.xxl,
+    backgroundColor: theme.colors.surface,
+    ...theme.shadows.small,
+  },
+  cartExpandButtonStacked: {
+    width: 118,
+    minHeight: 44,
+    flexDirection: 'row',
+    borderRadius: theme.radius.xl,
+  },
+  cartCountBadge: {
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.round,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 6,
+  },
+  cartCountText: {
+    color: theme.colors.textPrimary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
 });
