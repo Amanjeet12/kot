@@ -48,9 +48,16 @@ const PrinterStatusButton = () => {
      * open configuration.
      */
     if (status === PRINTER_STATUS.NOT_CONFIGURED) {
-      navigation.navigate('Profile', {
-        screen: 'PrinterSettingsScreen',
-      });
+      const sectionNavigator = navigation.getParent?.();
+      const sectionState = sectionNavigator?.getState?.();
+      const returnRoute = sectionState?.routes?.[sectionState.index]?.name;
+      const settingsOptions = { screen: 'PrinterSettingsScreen' };
+
+      if (returnRoute && returnRoute !== 'Profile') {
+        settingsOptions.params = { returnRoute };
+      }
+
+      navigation.navigate('Profile', settingsOptions);
 
       return;
     }

@@ -16,7 +16,12 @@ import { useSocket } from '../../../contexts/SocketContext';
 import { theme } from '../../../constant';
 import PrinterStatusButton from '../../../components/printer/PrinterStatusButton';
 
-const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
+const OrdersHeader = ({
+  onRefresh,
+  isRefreshing = false,
+  title = 'Active orders',
+  subtitle = 'Prepare in queue order. Oldest confirmed order is ranked first.',
+}) => {
   const { isTablet } = useResponsive();
   const { isSocketConnected, socketError } = useSocket();
 
@@ -32,11 +37,11 @@ const OrdersHeader = ({ onRefresh, isRefreshing = false }) => {
 
       <View style={styles.titleArea}>
         <Text allowFontScaling={false} style={styles.title}>
-          Active orders
+          {title}
         </Text>
 
         <Text allowFontScaling={false} style={styles.subtitle}>
-          Prepare in queue order. Oldest confirmed order is ranked first.
+          {subtitle}
         </Text>
       </View>
 

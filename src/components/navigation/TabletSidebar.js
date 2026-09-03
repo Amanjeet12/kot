@@ -30,6 +30,12 @@ const menuItems = [
     activeIcon: 'grid',
   },
   {
+    label: 'POS',
+    route: 'POS',
+    icon: 'calculator-outline',
+    activeIcon: 'calculator',
+  },
+  {
     label: 'Profile',
     route: 'Profile',
     icon: 'person-outline',

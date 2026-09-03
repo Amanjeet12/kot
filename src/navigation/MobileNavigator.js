@@ -12,6 +12,7 @@ import OrdersStackNavigator from './OrdersStackNavigator';
 import MenuStackNavigator from './MenuStackNavigator';
 import HistoryStackNavigator from './HistoryStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
+import PosStackNavigator from './PosStackNavigator';
 
 import { theme } from '../constant';
 
@@ -98,6 +99,10 @@ const MobileNavigator = () => {
               iconName = focused ? 'grid' : 'grid-outline';
               break;
 
+            case 'POS':
+              iconName = focused ? 'calculator' : 'calculator-outline';
+              break;
+
             case 'Profile':
               iconName = focused ? 'person' : 'person-outline';
               break;
@@ -129,6 +134,7 @@ const MobileNavigator = () => {
       <Tab.Screen name="Orders" component={OrdersStackNavigator} />
       <Tab.Screen name="History" component={HistoryStackNavigator} />
       <Tab.Screen name="Menu" component={MenuStackNavigator} />
+      <Tab.Screen name="POS" component={PosStackNavigator} />
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );

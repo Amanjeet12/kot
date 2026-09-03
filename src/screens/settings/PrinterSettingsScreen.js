@@ -39,7 +39,20 @@ const usbTypeLabel = usbType =>
     ? 'USB Printer Class'
     : 'Vendor-specific USB printer';
 
-const PrinterSettingsScreen = ({ navigation }) => {
+const PrinterSettingsScreen = ({ navigation, route }) => {
+  const handleBack = () => {
+    const returnRoute = route?.params?.returnRoute;
+
+    if (returnRoute && returnRoute !== 'Profile') {
+      const sectionNavigator = navigation.getParent?.();
+
+      navigation.popToTop();
+      sectionNavigator?.navigate(returnRoute);
+      return;
+    }
+
+    navigation.goBack();
+  };
   const { isTablet } = useResponsive();
 
   const {
@@ -351,7 +364,7 @@ const PrinterSettingsScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           style={styles.backButton}
         >
           <Ionicons
