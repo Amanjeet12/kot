@@ -4,7 +4,12 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { theme } from '../../../constant';
 
-const OrderSuccessStep = ({ orderNumber, onNewOrder, onCollapse }) => (
+const OrderSuccessStep = ({
+  orderNumber,
+  amountPaid,
+  onNewOrder,
+  onCollapse,
+}) => (
   <View style={styles.container}>
     <TouchableOpacity
       accessibilityLabel="Collapse current order"
@@ -22,9 +27,18 @@ const OrderSuccessStep = ({ orderNumber, onNewOrder, onCollapse }) => (
     </View>
     <Text style={styles.title}>Order placed</Text>
     <Text style={styles.message}>The order was created successfully.</Text>
-    <View style={styles.orderNumberCard}>
-      <Text style={styles.label}>ORDER NUMBER</Text>
-      <Text style={styles.orderNumber}>{orderNumber}</Text>
+    <View style={styles.orderDetailsCard}>
+      <View style={styles.orderDetail}>
+        <Text style={styles.label}>ORDER NUMBER</Text>
+        <Text style={styles.orderDetailValue}>{orderNumber ?? '-'}</Text>
+      </View>
+      <View style={styles.detailDivider} />
+      <View style={styles.orderDetail}>
+        <Text style={styles.label}>PRICE PAID</Text>
+        <Text style={styles.orderDetailValue}>
+          {'\u20B9'}{amountPaid ?? '-'}
+        </Text>
+      </View>
     </View>
     <TouchableOpacity onPress={onNewOrder} style={styles.button}>
       <Text style={styles.buttonText}>Start new order</Text>
@@ -79,9 +93,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: theme.spacing.sm,
   },
-  orderNumberCard: {
+  orderDetailsCard: {
     width: '100%',
-    alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'stretch',
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.xl,
@@ -89,13 +104,23 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     marginTop: theme.spacing.xl,
   },
+  orderDetail: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailDivider: {
+    width: 1,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: theme.spacing.md,
+  },
   label: {
     color: theme.colors.textSecondary,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  orderNumber: {
+  orderDetailValue: {
     color: theme.colors.textPrimary,
     fontSize: 24,
     fontWeight: '800',

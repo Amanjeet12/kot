@@ -6,6 +6,48 @@ export const ORDER_ROUTES = {
   ORDER_HISTORY: '/backend/kot/tuck_shop_orders_history',
   TODAY_TUCK_SHOP_MENU: '/backend/kot/today_tuck_shop_menu',
   CATEGORIES: '/backend/kot/categories',
+  FIND_CUSTOMER_BY_PHONE: '/backend/kot/find_customer_by_phone',
+  PLACE_TUCK_SHOP_ORDER_CASH: '/backend/kot/place_tuck_shop_order_cash',
+};
+
+export const findCustomerByPhone = async ({ token, phone }) => {
+  const response = await api.post(
+    ORDER_ROUTES.FIND_CUSTOMER_BY_PHONE,
+    { phone },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to look up customer');
+  }
+
+  return data?.data || { exists: false, customer: null };
+};
+
+export const placeTuckShopOrderCash = async ({ token, order }) => {
+  const response = await api.post(
+    ORDER_ROUTES.PLACE_TUCK_SHOP_ORDER_CASH,
+    order,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to place order');
+  }
+
+  return data?.data || data;
 };
 
 export const getUnprintedReceipts = async ({ token }) => {

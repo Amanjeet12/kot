@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -24,10 +24,9 @@ import { useTodayTuckShopMenu } from '../../hooks/queries/useTodayTuckShopMenu';
 import { useTuckShopCategories } from '../../hooks/queries/useTuckShopCategories';
 import { ACTIVE_ORDERS_QUERY_KEY } from '../../hooks/queries/useActiveOrders';
 import {
-  createMockCustomer,
-  createMockPosOrder,
-  lookupMockCustomer,
-} from '../../services/pos/posMockService';
+  findCustomerByPhone,
+  placeTuckShopOrderCash,
+} from '../../api/orderApi';
 import OrdersHeader from '../orders/components/OrdersHeader';
 import CustomerDetailsStep from './components/CustomerDetailsStep';
 import OrderSummaryStep from './components/OrderSummaryStep';
@@ -40,13 +39,24 @@ const CHECKOUT_STEPS = {
   SUCCESS: 'success',
 };
 
+const getLocalOrderDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const toIndianPhoneNumber = phone => `+91${phone}`;
+
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
 const PosScreen = () => {
   const queryClient = useQueryClient();
-  const user = useSelector(state => state.auth.user);
+  const token = useSelector(state => state.auth.token);
   const { isMobile, isPortrait, isLargeTablet } = useResponsive();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -71,7 +81,6 @@ const PosScreen = () => {
   });
   const categoryListRef = useRef(null);
   const lastLookupPhoneRef = useRef(null);
-  const orderRequestKeyRef = useRef(null);
   const shouldStack = isMobile || isPortrait;
   const productColumns = useMemo(() => {
     const fallbackColumns = isMobile ? 2 : isCartCollapsed ? 4 : 3;
@@ -175,11 +184,15 @@ const PosScreen = () => {
     0,
   );
   const isPhoneValid = /^\d{10}$/.test(customerPhone);
-  const isExistingCustomer = customerLookupStatus === 'existing';
+  const isExistingCustomer =
+    customerLookupStatus === 'existing' ||
+    customerLookupStatus === 'needs-name';
   const canContinueCustomer =
     isPhoneValid &&
-    (isExistingCustomer ||
-      (customerLookupStatus === 'new' && customerName.trim().length > 0));
+    (customerLookupStatus === 'existing' ||
+      ((customerLookupStatus === 'new' ||
+        customerLookupStatus === 'needs-name') &&
+        customerName.trim().length > 0));
   const hasInvalidCartItem = Object.entries(cart).some(([itemId, quantity]) => {
     const currentItem = menuItems.find(
       item => String(item.id) === String(itemId),
@@ -238,7 +251,7 @@ const PosScreen = () => {
     lastLookupPhoneRef.current = null;
   };
 
-  const lookupCustomer = async phone => {
+  const lookupCustomer = useCallback(async phone => {
     if (!/^\d{10}$/.test(phone) || lastLookupPhoneRef.current === phone) {
       return;
     }
@@ -249,17 +262,25 @@ const PosScreen = () => {
     setCustomerLookupError('');
 
     try {
-      const customer = await lookupMockCustomer(phone);
+      const result = await findCustomerByPhone({
+        token,
+        phone: toIndianPhoneNumber(phone),
+      });
+      const customer = result?.customer;
 
       if (lastLookupPhoneRef.current !== phone) return;
 
-      if (customer) {
+      if (result?.exists && customer) {
+        const existingName = String(
+          customer.name || customer.customer_name || customer.full_name || '',
+        ).trim();
+
         setResolvedCustomer({
-          id: customer.customer_id,
-          name: customer.name,
-          phone: customer.phone,
+          id: customer.customer_id || customer.id,
+          name: existingName,
+          phone,
         });
-        setCustomerLookupStatus('existing');
+        setCustomerLookupStatus(existingName ? 'existing' : 'needs-name');
       } else {
         setCustomerLookupStatus('new');
       }
@@ -270,13 +291,13 @@ const PosScreen = () => {
         lookupError?.message || 'Unable to look up this customer.',
       );
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (isPhoneValid) {
       lookupCustomer(customerPhone);
     }
-  }, [customerPhone, isPhoneValid]);
+  }, [customerPhone, isPhoneValid, lookupCustomer]);
 
   useEffect(() => {
     if (
@@ -328,7 +349,6 @@ const PosScreen = () => {
 
     setCartError('');
     setOrderError('');
-    orderRequestKeyRef.current = null;
     setCheckoutStep(CHECKOUT_STEPS.CUSTOMER);
   };
 
@@ -377,41 +397,18 @@ const PosScreen = () => {
     setOrderError('');
 
     try {
-      let customer = resolvedCustomer;
-
-      if (!customer) {
-        const createdCustomer = await createMockCustomer({
-          phone: customerPhone,
-          name: customerName,
-        });
-        customer = {
-          id: createdCustomer.customer_id,
-          name: createdCustomer.name,
-          phone: createdCustomer.phone,
-        };
-        setResolvedCustomer(customer);
-      }
-
-      if (!orderRequestKeyRef.current) {
-        orderRequestKeyRef.current = `${customerPhone}-${Date.now()}`;
-      }
-
       const payload = {
-        customer_id: customer.id,
-        location_id: user?.location?.locationId || user?.locationId || null,
-        payment_method: user?.paymentMode || user?.payment_mode || 'cash',
-        total_price: subtotal,
+        phone: toIndianPhoneNumber(customerPhone),
+        name: resolvedCustomer?.name || customerName.trim(),
+        order_date: getLocalOrderDate(),
         items: cartItems.map(item => ({
           daily_menu_item_id: item.dailyMenuItemId,
-          tuck_shop_item_id: item.tuckShopItemId,
           qty: item.quantity,
-          price: item.price,
-          total_price: item.price * item.quantity,
         })),
       };
-      const order = await createMockPosOrder({
-        requestKey: orderRequestKeyRef.current,
-        payload,
+      const order = await placeTuckShopOrderCash({
+        token,
+        order: payload,
       });
 
       setCreatedOrder(order);
@@ -441,7 +438,6 @@ const PosScreen = () => {
     resetCustomerLookup();
     setOrderError('');
     setCreatedOrder(null);
-    orderRequestKeyRef.current = null;
     setCheckoutStep(CHECKOUT_STEPS.CART);
   };
 
@@ -851,9 +847,15 @@ const PosScreen = () => {
               ) : (
                 <OrderSuccessStep
                   orderNumber={
+                    createdOrder?.order?.tuck_shop_order_id ||
                     createdOrder?.tuck_shop_order_id ||
                     createdOrder?.order_id ||
                     createdOrder?.id
+                  }
+                  amountPaid={
+                    createdOrder?.payment?.amount ??
+                    createdOrder?.order?.total_price ??
+                    createdOrder?.total_price
                   }
                   onNewOrder={handleStartNewOrder}
                   onCollapse={() => setCartCollapsed(true)}

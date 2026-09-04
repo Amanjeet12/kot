@@ -38,6 +38,7 @@ const CustomerDetailsStep = ({
 }) => {
   const isExisting = lookupStatus === 'existing';
   const isNew = lookupStatus === 'new';
+  const needsName = lookupStatus === 'needs-name';
 
   return (
     <View style={styles.container}>
@@ -121,7 +122,7 @@ const CustomerDetailsStep = ({
           </View>
         )}
 
-        {isNew && (
+        {(isNew || needsName) && (
           <View style={styles.newCustomerSection}>
             <View style={styles.newStatusRow}>
               <Ionicons
@@ -129,7 +130,9 @@ const CustomerDetailsStep = ({
                 size={18}
                 color={theme.colors.info}
               />
-              <Text style={styles.newStatusText}>New customer</Text>
+              <Text style={styles.newStatusText}>
+                {needsName ? 'Customer name required' : 'New customer'}
+              </Text>
             </View>
             <Text style={styles.label}>CUSTOMER NAME</Text>
             <TextInput
