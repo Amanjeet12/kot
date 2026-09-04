@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { theme } from '../../constant';
 import { useResponsive } from '../../contexts/ResponsiveContext';
-import { MOCK_INVENTORY_ITEMS } from './mockInventoryItems';
+import { useInventory } from '../../hooks/queries/useInventory';
+import { useInventoryCounts } from '../../hooks/queries/useInventoryCounts';
+import { useUpdateInventoryStock } from '../../hooks/mutations/useUpdateInventoryStock';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -27,27 +29,52 @@ const STATUS_LABELS = {
   outOfStock: 'Out of stock',
 };
 
-const InventoryRow = ({ item, onAdjust, mobile = false }) => {
+const InventoryRow = ({ item, onAdjust, isUpdating, mobile = false }) => {
   const status = getStatus(item);
+  const productName = item.item?.itemName || 'Inventory item';
+  const canRemove =
+    Number(item.currentQuantity) > Number(item.reservedQuantity || 0);
   const product = (
     <View style={styles.productCell}>
       <View style={[styles.productIcon, styles[`${status}Icon`]]}>
         <Ionicons name={status === 'available' ? 'checkmark-circle-outline' : status === 'lowStock' ? 'alert-circle-outline' : 'close-circle-outline'} size={24} color={status === 'available' ? theme.colors.success : status === 'lowStock' ? theme.colors.warning : theme.colors.error} />
       </View>
       <View style={styles.productText}>
-        <Text allowFontScaling={false} numberOfLines={1} style={styles.productName}>{item.item.itemName}</Text>
-        <Text allowFontScaling={false} style={styles.meta}>{item.item.type} · Inventory ID {item.inventory_id}</Text>
+        <Text allowFontScaling={false} numberOfLines={1} style={styles.productName}>{productName}</Text>
+        <Text allowFontScaling={false} style={styles.meta}>{item.item?.type || 'Item'} · Inventory ID {item.inventory_id}</Text>
       </View>
     </View>
   );
   const actions = (
     <View style={styles.actions}>
-      <TouchableOpacity activeOpacity={0.75} onPress={() => onAdjust(item.inventory_id, -1)} style={styles.stockButton}>
-        <Ionicons name="remove" size={18} color={theme.colors.textPrimary} />
-      </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.75} onPress={() => onAdjust(item.inventory_id, 1)} style={[styles.stockButton, styles.addButton]}>
-        <Ionicons name="add" size={18} color={theme.colors.textPrimary} />
-      </TouchableOpacity>
+      {isUpdating ? (
+        <View style={styles.actionsLoading}>
+          <ActivityIndicator size="small" color={theme.colors.primaryDark} />
+        </View>
+      ) : (
+        <>
+          <TouchableOpacity
+            accessibilityLabel={`Remove one ${productName}`}
+            activeOpacity={0.75}
+            disabled={!canRemove}
+            onPress={() => onAdjust(item.inventory_id, -1)}
+            style={[
+              styles.stockButton,
+              !canRemove && styles.stockButtonDisabled,
+            ]}
+          >
+            <Ionicons name="remove" size={18} color={theme.colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityLabel={`Add one ${productName}`}
+            activeOpacity={0.75}
+            onPress={() => onAdjust(item.inventory_id, 1)}
+            style={[styles.stockButton, styles.addButton]}
+          >
+            <Ionicons name="add" size={18} color={theme.colors.textPrimary} />
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 
@@ -78,32 +105,97 @@ const InventoryRow = ({ item, onAdjust, mobile = false }) => {
 const ManageInventoryScreen = ({ navigation }) => {
   const { isTablet, isLargeTablet, isMobile, isPortrait } = useResponsive();
   const useCompactStats = isMobile || isPortrait;
-  const [items, setItems] = useState(MOCK_INVENTORY_ITEMS);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [updatingInventoryId, setUpdatingInventoryId] = useState(null);
+  const [stockError, setStockError] = useState('');
+  const {
+    data: inventoryResponse,
+    isLoading,
+    error: inventoryError,
+    refetch: refetchInventory,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInventory();
+  const {
+    data: countsResponse,
+    refetch: refetchCounts,
+  } = useInventoryCounts();
+  const updateStock = useUpdateInventoryStock();
 
-  const counts = useMemo(() => ({
-    all: items.length,
-    available: items.filter(item => getStatus(item) === 'available').length,
-    lowStock: items.filter(item => getStatus(item) === 'lowStock').length,
-    unavailable: items.filter(item => getStatus(item) === 'unavailable').length,
-    outOfStock: items.filter(item => getStatus(item) === 'outOfStock').length,
-  }), [items]);
+  const items = useMemo(() => {
+    const inventoryById = new Map();
+
+    (inventoryResponse?.pages || []).forEach(page => {
+      (page?.data || []).forEach(item => {
+        inventoryById.set(item.inventory_id, item);
+      });
+    });
+
+    return [...inventoryById.values()];
+  }, [inventoryResponse]);
+
+  const counts = useMemo(() => {
+    const serverCounts = countsResponse?.data || {};
+    const countStatus = status =>
+      items.filter(item => getStatus(item) === status).length;
+
+    return {
+      all: Number(serverCounts.total ?? items.length),
+      available: Number(serverCounts.available ?? countStatus('available')),
+      lowStock: Number(serverCounts.low_stock ?? countStatus('lowStock')),
+      unavailable: Number(
+        serverCounts.unavailable ?? countStatus('unavailable'),
+      ),
+      outOfStock: Number(
+        serverCounts.out_of_stock ?? countStatus('outOfStock'),
+      ),
+    };
+  }, [countsResponse, items]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return items.filter(item => (filter === 'all' || getStatus(item) === filter) && (!term || item.item.itemName.toLowerCase().includes(term) || item.item.category.name.toLowerCase().includes(term)));
+    return items.filter(item => (filter === 'all' || getStatus(item) === filter) && (!term || item.item?.itemName?.toLowerCase().includes(term) || item.item?.category?.name?.toLowerCase().includes(term)));
   }, [filter, items, search]);
 
-  const adjustStock = (id, amount) => setItems(previous => previous.map(item => {
-    if (item.inventory_id !== id) return item;
-    const currentQuantity = Math.max(
-      item.reservedQuantity,
-      item.currentQuantity + amount,
-    );
-    const availableQuantity = Math.max(0, currentQuantity - item.reservedQuantity);
-    return { ...item, currentQuantity, availableQuantity, isLowStock: availableQuantity > 0 && availableQuantity <= item.reorderLevel };
-  }));
+  const adjustStock = async (inventoryId, amount) => {
+    if (updateStock.isPending) return;
+
+    setUpdatingInventoryId(inventoryId);
+    setStockError('');
+
+    try {
+      await updateStock.mutateAsync([
+        {
+          inventory_id: inventoryId,
+          quantity: Math.abs(amount),
+          transactionType: amount > 0 ? 'stock_in' : 'wastage',
+        },
+      ]);
+    } catch (error) {
+      setStockError(
+        error?.response?.data?.msg ||
+          error?.message ||
+          'Unable to update inventory stock.',
+      );
+    } finally {
+      setUpdatingInventoryId(null);
+    }
+  };
+
+  const retryInventory = () => {
+    refetchInventory();
+    refetchCounts();
+  };
+
+  const paginationTotal = Number(
+    inventoryResponse?.pages?.[0]?.pagination?.total ?? counts.all,
+  );
+
+  const loadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -143,14 +235,38 @@ const ManageInventoryScreen = ({ navigation }) => {
           <View style={[styles.searchBox, !isTablet && styles.mobileSearch]}><Ionicons name="search-outline" size={20} color={theme.colors.textMuted} /><TextInput allowFontScaling={false} value={search} onChangeText={setSearch} placeholder="Search inventory" placeholderTextColor={theme.colors.textMuted} style={styles.searchInput} /></View>
         </View>
 
-        {isTablet ? (
+        {stockError ? (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle-outline" size={18} color={theme.colors.error} />
+            <Text style={styles.errorText}>{stockError}</Text>
+          </View>
+        ) : null}
+
+        {isLoading ? (
+          <View style={styles.feedbackState}>
+            <ActivityIndicator size="large" color={theme.colors.primaryDark} />
+            <Text style={styles.feedbackText}>Loading inventory...</Text>
+          </View>
+        ) : inventoryError ? (
+          <View style={styles.feedbackState}>
+            <Ionicons name="alert-circle-outline" size={34} color={theme.colors.error} />
+            <Text style={styles.feedbackText}>{inventoryError?.response?.data?.msg || inventoryError?.message || 'Unable to load inventory.'}</Text>
+            <TouchableOpacity onPress={retryInventory} style={styles.retryButton}><Text style={styles.retryText}>Retry</Text></TouchableOpacity>
+          </View>
+        ) : isTablet ? (
           <View style={styles.table}>
             <View style={styles.tableHeader}><Text style={[styles.headerText, styles.productColumn]}>PRODUCT</Text><Text style={[styles.headerText, styles.stockColumn]}>STOCK</Text><Text style={[styles.headerText, styles.reservedColumn]}>RESERVED</Text><Text style={[styles.headerText, styles.statusColumn]}>STATUS</Text><Text style={[styles.headerText, styles.actionColumn]}>ACTIONS</Text></View>
-            <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={false}>{filteredItems.map(item => <InventoryRow key={item.inventory_id} item={item} onAdjust={adjustStock} />)}</ScrollView>
-            <View style={styles.footer}><Text allowFontScaling={false} style={styles.footerText}>Showing {filteredItems.length} of {items.length} inventory records</Text></View>
+            <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={false}>{filteredItems.map(item => <InventoryRow key={item.inventory_id} item={item} onAdjust={adjustStock} isUpdating={updatingInventoryId === item.inventory_id} />)}</ScrollView>
+            <View style={styles.footer}>
+              <Text allowFontScaling={false} style={styles.footerText}>Loaded {items.length} of {paginationTotal} · Showing {filteredItems.length}</Text>
+              {hasNextPage && <TouchableOpacity disabled={isFetchingNextPage} onPress={loadMore} style={styles.loadMoreButton}>{isFetchingNextPage ? <ActivityIndicator size="small" color={theme.colors.textPrimary} /> : <Text style={styles.loadMoreText}>Load more</Text>}</TouchableOpacity>}
+            </View>
           </View>
         ) : (
-          <ScrollView style={styles.mobileList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.mobileListContent}>{filteredItems.map(item => <InventoryRow key={item.inventory_id} item={item} onAdjust={adjustStock} mobile />)}</ScrollView>
+          <ScrollView style={styles.mobileList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.mobileListContent}>
+            {filteredItems.map(item => <InventoryRow key={item.inventory_id} item={item} onAdjust={adjustStock} isUpdating={updatingInventoryId === item.inventory_id} mobile />)}
+            {hasNextPage && <TouchableOpacity disabled={isFetchingNextPage} onPress={loadMore} style={styles.mobileLoadMoreButton}>{isFetchingNextPage ? <ActivityIndicator size="small" color={theme.colors.textPrimary} /> : <Text style={styles.loadMoreText}>Load more inventory</Text>}</TouchableOpacity>}
+          </ScrollView>
         )}
       </View>
     </SafeAreaView>
@@ -195,12 +311,23 @@ const styles = StyleSheet.create({
   availableIcon: { backgroundColor: '#E7F7F0' }, lowStockIcon: { backgroundColor: '#FFF4D6' }, unavailableIcon: { backgroundColor: '#FDE8E8' }, outOfStockIcon: { backgroundColor: '#FDE8E8' },
   productText: { flex: 1, minWidth: 0 }, productName: { color: theme.colors.textPrimary, fontSize: 13, fontWeight: '800' }, meta: { marginTop: 3, color: theme.colors.textSecondary, fontSize: 8 }, stockValue: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' },
   status: { fontSize: 10, fontWeight: '800' }, availableText: { color: theme.colors.success }, lowStockText: { color: theme.colors.warning }, unavailableText: { color: theme.colors.error }, outOfStockText: { color: theme.colors.error },
-  actions: { flexDirection: 'row', gap: theme.spacing.sm },
+  actions: { minWidth: 84, flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.sm },
+  actionsLoading: { height: 38, alignItems: 'center', justifyContent: 'center' },
   stockButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderDark, borderRadius: theme.radius.xl, backgroundColor: theme.colors.surface },
+  stockButtonDisabled: { opacity: 0.35 },
   addButton: { borderColor: theme.colors.primaryDark, backgroundColor: theme.colors.primary },
-  footer: { height: 45, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderTopWidth: 1, borderTopColor: theme.colors.border }, footerText: { color: theme.colors.textSecondary, fontSize: 8 },
+  footer: { minHeight: 45, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.lg, borderTopWidth: 1, borderTopColor: theme.colors.border }, footerText: { color: theme.colors.textSecondary, fontSize: 8 },
+  loadMoreButton: { minWidth: 88, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.lg, backgroundColor: theme.colors.primary },
+  loadMoreText: { color: theme.colors.textPrimary, fontSize: 10, fontWeight: '800' },
   mobileList: { flex: 1 }, mobileListContent: { paddingBottom: theme.spacing.xxl, gap: theme.spacing.md },
+  mobileLoadMoreButton: { height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.xl, backgroundColor: theme.colors.primary },
   mobileCard: { padding: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface },
   mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md },
   mobileDetails: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: theme.spacing.lg }, mobileLabel: { color: theme.colors.textSecondary, fontSize: 8, fontWeight: '800' },
+  feedbackState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl },
+  feedbackText: { color: theme.colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: theme.spacing.md },
+  retryButton: { marginTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.lg, backgroundColor: theme.colors.primary },
+  retryText: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '800' },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.md, padding: theme.spacing.md, borderWidth: 1, borderColor: '#F0C5C0', borderRadius: theme.radius.xl, backgroundColor: '#FEF2F2' },
+  errorText: { flex: 1, color: theme.colors.error, fontSize: 11 },
 });
