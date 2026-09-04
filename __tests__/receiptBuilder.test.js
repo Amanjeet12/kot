@@ -4,6 +4,7 @@ import {
   buildTestReceipt,
 } from '../src/services/printer/receipt/receiptBuilder';
 import PrinterManager from '../src/services/printer/PrinterManager';
+import { mapTuckShopOrder } from '../src/utils/orderMapper';
 
 jest.mock('react-native-tcp-socket', () => ({
   createConnection: jest.fn(),
@@ -140,6 +141,41 @@ describe('buildReceipt', () => {
     expect(amountLine).toHaveLength(32);
     expect(amountLine).toMatch(/^2 x .+\sRs\.40$/);
     expect(receipt).toContain('Chicken Burger With Cheese\n');
+  });
+
+  it('does not multiply an API line total by the quantity a second time', () => {
+    const order = mapTuckShopOrder({
+      tuck_shop_order_id: 148,
+      total_price: 2050,
+      items: [
+        {
+          tuck_shop_item_id: 23,
+          itemName: 'Curd Rice Bowl',
+          qty: 6,
+          price: 300,
+          total_price: 1800,
+        },
+        {
+          tuck_shop_item_id: 40,
+          itemName: 'Pomegranate Juice',
+          qty: 1,
+          price: 250,
+          total_price: 250,
+        },
+      ],
+    });
+    const receipt = buildReceipt(order, {
+      paperWidth: 80,
+      charactersPerLine: 48,
+      autoCut: false,
+    }).toString('utf8');
+
+    expect(receipt).toContain('6 x Curd Rice Bowl');
+    expect(receipt).toContain('Rs.1800');
+    expect(receipt).toContain('1 x Pomegranate Juice');
+    expect(receipt).toContain('Rs.250');
+    expect(receipt).toContain('Rs.2050');
+    expect(receipt).not.toContain('Rs.10800');
   });
 
   it('emphasizes the order number while keeping the time on the same row', () => {

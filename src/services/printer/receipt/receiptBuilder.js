@@ -245,16 +245,22 @@ export const buildReceipt = (order, config) => {
         ? parsedQuantity
         : 0;
 
-    const parsedPrice = Number(item?.price);
+    const parsedUnitPrice = Number(
+      item?.unitPrice ?? item?.unit_price ?? item?.price,
+    );
 
-    const price =
-      Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
+    const unitPrice =
+      Number.isFinite(parsedUnitPrice) && parsedUnitPrice >= 0
+        ? parsedUnitPrice
+        : 0;
 
     const parsedAmount = Number(
-      item?.totalAmount ??
+      item?.totalPrice ??
+        item?.total_price ??
+        item?.totalAmount ??
         item?.total_amount ??
         item?.amount ??
-        quantity * price,
+        quantity * unitPrice,
     );
 
     const amount =
