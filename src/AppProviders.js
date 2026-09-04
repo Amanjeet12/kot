@@ -14,7 +14,7 @@ const GlobalProviders = ({ children }) => {
   return (
     <SocketProvider token={token} user={user} isAuthenticated={isAuthenticated}>
       <PrinterProvider>
-        <AutoPrintManager />
+        <AutoPrintManager token={token} isAuthenticated={isAuthenticated} />
         {children}
       </PrinterProvider>
     </SocketProvider>

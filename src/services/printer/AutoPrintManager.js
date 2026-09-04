@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 
+import {
+  getUnprintedReceipts,
+  markReceiptPrinted,
+} from '../../api/orderApi';
 import { normalizeOrderStatus } from '../../constant/orderStatus';
 import { usePrinter } from '../../contexts/PrinterContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -74,12 +79,40 @@ export const getPrintableSocketOrder = payload => {
     : socketOrder;
 };
 
-const AutoPrintManager = () => {
-  const { socket } = useSocket();
+export const getPrintableRecoveryOrder = order => {
+  if (!order || typeof order !== 'object' || !getCanonicalOrderId(order)) {
+    return null;
+  }
+
+  const receiptPrinted = order.receipt_printed ?? order.receiptPrinted;
+
+  if (
+    receiptPrinted === true ||
+    receiptPrinted === 1 ||
+    receiptPrinted === '1' ||
+    receiptPrinted === 'true'
+  ) {
+    return null;
+  }
+
+  return mapTuckShopOrder(order);
+};
+
+const reportFailure = (type, id, error) => {
+  console.warn(
+    `[AutoPrint] ${type} order ${id}: ${
+      error?.message || 'unknown error'
+    }`,
+  );
+};
+
+const AutoPrintManager = ({ token, isAuthenticated }) => {
+  const { socket, isSocketConnected } = useSocket();
   const { printReceipt } = usePrinter();
   const queueRef = useRef([]);
   const processingRef = useRef(false);
   const receivedOrderIdsRef = useRef(new Set());
+  const recoveryRunningRef = useRef(false);
   const activeRef = useRef(true);
 
   const processQueue = useCallback(async () => {
@@ -101,13 +134,27 @@ const AutoPrintManager = () => {
           await printReceipt(order);
           devLog(`printed order ${id}`);
         } catch (error) {
-          devLog(`failed order ${id}: ${error?.message || 'unknown error'}`);
+          reportFailure('PRINT_FAILED', id, error);
+          continue;
+        }
+
+        try {
+          await markReceiptPrinted({
+            token,
+            tuckShopOrderId:
+              order.tuckShopOrderId ?? order.tuck_shop_order_id ?? id,
+          });
+          devLog(`marked order ${id} as printed`);
+        } catch (error) {
+          // The physical print already succeeded. Reporting this separately is
+          // intentional: a backend acknowledgement failure must never resend.
+          reportFailure('MARK_PRINTED_FAILED', id, error);
         }
       }
     } finally {
       processingRef.current = false;
     }
-  }, [printReceipt]);
+  }, [printReceipt, token]);
 
   const enqueue = useCallback(
     order => {
@@ -132,6 +179,43 @@ const AutoPrintManager = () => {
     [processQueue],
   );
 
+  const recoverUnprintedReceipts = useCallback(async () => {
+    if (
+      !activeRef.current ||
+      !isAuthenticated ||
+      !token ||
+      recoveryRunningRef.current
+    ) {
+      return;
+    }
+
+    recoveryRunningRef.current = true;
+
+    try {
+      const response = await getUnprintedReceipts({ token });
+
+      if (!activeRef.current) {
+        return;
+      }
+
+      const orders = Array.isArray(response?.data) ? response.data : [];
+
+      // Preserve backend order so older receipts remain ahead when that is the
+      // ordering supplied by the recovery endpoint.
+      orders.forEach(rawOrder => {
+        const order = getPrintableRecoveryOrder(rawOrder);
+
+        if (order) {
+          enqueue(order);
+        }
+      });
+    } catch (error) {
+      reportFailure('RECOVERY_FETCH_FAILED', 'request', error);
+    } finally {
+      recoveryRunningRef.current = false;
+    }
+  }, [enqueue, isAuthenticated, token]);
+
   useEffect(() => {
     activeRef.current = true;
 
@@ -140,6 +224,28 @@ const AutoPrintManager = () => {
       queueRef.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    recoverUnprintedReceipts();
+  }, [recoverUnprintedReceipts]);
+
+  useEffect(() => {
+    if (isSocketConnected) {
+      recoverUnprintedReceipts();
+    }
+  }, [isSocketConnected, recoverUnprintedReceipts]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        recoverUnprintedReceipts();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [recoverUnprintedReceipts]);
 
   useEffect(() => {
     if (!socket) {

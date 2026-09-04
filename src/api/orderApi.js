@@ -2,9 +2,46 @@ import api from './axiosInstance';
 
 export const ORDER_ROUTES = {
   ACTIVE_ORDERS: '/backend/kot/tuck_shop_orders',
+  UNPRINTED_RECEIPTS: '/backend/kot/tuck_shop_orders/unprinted_receipts',
   ORDER_HISTORY: '/backend/kot/tuck_shop_orders_history',
   TODAY_TUCK_SHOP_MENU: '/backend/kot/today_tuck_shop_menu',
   CATEGORIES: '/backend/kot/categories',
+};
+
+export const getUnprintedReceipts = async ({ token }) => {
+  const response = await api.get(ORDER_ROUTES.UNPRINTED_RECEIPTS, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to fetch unprinted receipts');
+  }
+
+  return data;
+};
+
+export const markReceiptPrinted = async ({ token, tuckShopOrderId }) => {
+  const response = await api.patch(
+    `/backend/kot/tuck_shop_order/${tuckShopOrderId}/receipt/printed`,
+    {},
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  const data = response.data;
+
+  if (data?.success === 0 || data?.success === '0') {
+    throw new Error(data?.msg || 'Unable to mark receipt as printed');
+  }
+
+  return data;
 };
 
 export const getTuckShopCategories = async ({ token }) => {
